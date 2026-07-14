@@ -194,10 +194,10 @@ const MAIN_API = "https://networkapi.2t.hk";
 const STORAGE_KEY = "ecs_token";
 const PHONE_HISTORY_KEY = "last_used_phone"; // ✅ 新增本地记忆手机号
 const THEME_KEY = "theme"; 
-const LOGIN_API = MAIN_API + "/gettoken"; 
-const OCS_API = MAIN_API + "/ocs_proxy";
-const BASIC_API = MAIN_API + "/basicdata_proxy";
-const QCI_API = MAIN_API + "/qci_proxy";
+const LOGIN_API = MAIN_API + "/gettoken/"; 
+const OCS_API = MAIN_API + "/ocs_proxy/";
+const BASIC_API = MAIN_API + "/basicdata_proxy/";
+const QCI_API = MAIN_API + "/qci_proxy/";
 const INTERVAL_MS = 30_000;
 const CAPTCHA_APPID = "195809716"; 
 const ECS_ACC = "sGPt3BqyB6Z8STGQtqwLkkapYkz97jot5FVcLTq2IuxlXuBzS1vqZlKEe9Ac4QHJBkBAZYrKQKZyUhWatBMozAVYOL1Wd7sO/hXwCTggEcCFgpgaBytbG99HN3xavOGbeDtTZGV7eiBYSsQNhJ3wRvnvN2PKXFzBLhPa8i0j8Gs=";
@@ -550,7 +550,7 @@ async function handleSendCode(resultToken = "") {
   try {
     const r = await fetch(`${LOGIN_API}?action=send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
       body: JSON.stringify({ 
         phone: loginPhone.value, 
         appid: currentAppId.value, 
@@ -600,7 +600,7 @@ async function startCaptcha(mobileHex) {
         
         const vr = await fetch(`${LOGIN_API}?action=validate`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
           body: JSON.stringify({
             ticket: res.ticket, randstr: res.randstr,
             mobile: mobileHex, phone: loginPhone.value,
@@ -637,7 +637,7 @@ async function doLogin() {
 
     const r = await fetch(`${LOGIN_API}?action=login`, { 
       method: "POST", 
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify({ 
         phone: loginPhone.value, 
         code: loginCode.value,
