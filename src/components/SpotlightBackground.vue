@@ -1,16 +1,28 @@
 <template>
   <div
     ref="hostRef"
-    class="pointer-events-none fixed inset-0 z-[1] overflow-hidden opacity-0 transition-opacity duration-500 dark:opacity-[.62]"
+    class="pointer-events-none fixed inset-0 z-[1] overflow-hidden transition-opacity duration-500"
+    :class="props.active ? 'opacity-[.62]' : 'opacity-0'"
     aria-hidden="true"
-    data-light-rays-background
   >
-    <canvas ref="canvasRef" class="block h-full w-full" data-light-rays-canvas></canvas>
+    <canvas
+      ref="canvasRef"
+      class="block h-full w-full"
+      @webglcontextlost="handleContextLost"
+      @webglcontextrestored="handleContextRestored"
+    ></canvas>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+
+const props = defineProps({
+  active: {
+    type: Boolean,
+    default: false,
+  },
+});
 
 const canvasRef = ref(null);
 const hostRef = ref(null);
@@ -143,9 +155,7 @@ let uniforms = null;
 let isWebGl2 = false;
 let rendererUnavailable = false;
 let motionQuery = null;
-let themeObserver = null;
 let resizeObserver = null;
-let isDark = false;
 let reduceMotion = false;
 
 function compileShader(context, type, source) {
@@ -346,7 +356,7 @@ function renderFrame(time = 0) {
 }
 
 function animate(time) {
-  if (!isDark || reduceMotion || document.hidden || !program) {
+  if (!props.active || reduceMotion || document.hidden || !program) {
     animationFrame = 0;
     return;
   }
@@ -356,7 +366,7 @@ function animate(time) {
 }
 
 function startAnimation() {
-  if (animationFrame || !isDark || reduceMotion || document.hidden || !program) return;
+  if (animationFrame || !props.active || reduceMotion || document.hidden || !program) return;
   animationFrame = requestAnimationFrame(animate);
 }
 
@@ -371,10 +381,9 @@ function clearFrame() {
 }
 
 function syncPlayback() {
-  isDark = document.documentElement.classList.contains("dark");
   reduceMotion = Boolean(motionQuery?.matches);
 
-  if (!isDark) {
+  if (!props.active) {
     stopAnimation();
     clearFrame();
     return;
@@ -394,7 +403,7 @@ function syncPlayback() {
 }
 
 function handleResize() {
-  if (!isDark || !initRenderer()) return;
+  if (!props.active || !initRenderer()) return;
   resizeCanvas();
   renderFrame(reduceMotion ? 0 : performance.now());
 }
@@ -430,21 +439,13 @@ function destroyRenderer() {
   uniforms = null;
 }
 
+watch(() => props.active, syncPlayback);
+
 onMounted(() => {
-  const canvas = canvasRef.value;
   motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
   if (motionQuery.addEventListener) motionQuery.addEventListener("change", syncPlayback);
   else motionQuery.addListener?.(syncPlayback);
-  themeObserver = new MutationObserver(syncPlayback);
-  themeObserver.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["class"],
-  });
   resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(handleResize);
-  if (canvas) {
-    canvas.addEventListener("webglcontextlost", handleContextLost);
-    canvas.addEventListener("webglcontextrestored", handleContextRestored);
-  }
   if (hostRef.value) resizeObserver?.observe(hostRef.value);
   window.addEventListener("resize", handleResize, { passive: true });
   document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -452,15 +453,11 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  const canvas = canvasRef.value;
   if (motionQuery?.removeEventListener) motionQuery.removeEventListener("change", syncPlayback);
   else motionQuery?.removeListener?.(syncPlayback);
-  themeObserver?.disconnect();
   resizeObserver?.disconnect();
   window.removeEventListener("resize", handleResize);
   document.removeEventListener("visibilitychange", handleVisibilityChange);
-  canvas?.removeEventListener("webglcontextlost", handleContextLost);
-  canvas?.removeEventListener("webglcontextrestored", handleContextRestored);
   destroyRenderer();
 });
 </script>

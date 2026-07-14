@@ -1,5 +1,8 @@
 <template>
-  <div class="min-h-screen text-zinc-900 transition-colors duration-300 dark:text-zinc-100">
+  <div
+    class="min-h-screen text-zinc-900 transition-colors duration-300 dark:text-zinc-100"
+    @keydown.esc="onPageEscape"
+  >
     <header class="sticky top-0 z-50 hidden border-b border-zinc-200/80 bg-white/80 hover:shadow-sm backdrop-blur-xl lg:block dark:border-zinc-800/90 dark:bg-zinc-950/80">
       <div class="mx-auto flex h-16 max-w-4xl items-center justify-between gap-6 px-4 sm:px-6">
         <div class="flex shrink-0 items-center gap-2.5">
@@ -75,7 +78,7 @@
             截图分享
           </button>
 
-          <div ref="accountMenuRef" class="relative min-w-0">
+          <div class="relative min-w-0">
             <button
               type="button"
               class="inline-flex h-10 max-w-44 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white/90 px-3 text-sm font-medium text-zinc-700 hover:shadow-sm transition hover:bg-zinc-50 active:scale-[0.98] dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200 dark:hover:bg-zinc-800"
@@ -90,8 +93,7 @@
 
             <div
               v-if="accountMenuOpen"
-              class="absolute right-0 top-12 z-[60] w-72 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
-              style="max-height: min(70dvh, 34rem)"
+              class="absolute right-0 top-12 z-[60] max-h-[min(70dvh,34rem)] w-72 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
             >
               <div class="flex items-center justify-between px-2 pb-1">
                 <span class="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">账号切换</span>
@@ -124,6 +126,14 @@
         </nav>
       </div>
     </header>
+
+    <button
+      v-if="moreMenuOpen || accountMenuOpen"
+      type="button"
+      class="fixed inset-0 z-30 cursor-default"
+      aria-label="关闭操作菜单"
+      @click="closeActionMenus"
+    ></button>
 
     <main class="mx-auto max-w-4xl px-4 py-6 sm:py-8 lg:py-8">
     <div ref="captureTargetRef" class="relative space-y-6">
@@ -161,7 +171,7 @@
             </div>
           </div>
 
-          <div ref="moreMenuRef" class="relative flex shrink-0 items-center gap-2 lg:hidden" data-capture-exclude="true">
+          <div ref="moreMenuRef" class="relative flex shrink-0 items-center gap-2 lg:hidden">
             <button
               type="button"
               class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-sm font-medium text-white hover:shadow-sm transition hover:bg-indigo-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 dark:bg-indigo-500 dark:hover:bg-indigo-600"
@@ -187,8 +197,7 @@
 
             <div
               v-if="moreMenuOpen"
-              class="absolute right-0 top-12 z-40 w-[19rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
-              style="max-height: min(70dvh, 34rem)"
+              class="absolute right-0 top-12 z-40 max-h-[min(70dvh,34rem)] w-[19rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
             >
               <div class="grid grid-cols-2 gap-1">
                 <button type="button" class="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-zinc-800" :disabled="isLoading" @click="handleMenuRefresh">
@@ -278,22 +287,26 @@
           :card="limitedFlowCards[0]"
         />
 
-        <section v-else-if="limitedFlowCards.length > 1" class="col-span-full" aria-labelledby="limited-flow-heading">
+        <section
+          v-else-if="limitedFlowCards.length > 1"
+          class="col-span-full"
+          :aria-labelledby="limitedFlowHeadingId"
+        >
           <div class="mb-3 flex items-center justify-between">
-            <h2 id="limited-flow-heading" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <h2 :id="limitedFlowHeadingId" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">
               其他流量包 ({{ limitedFlowCards.length }})
             </h2>
             <button
               type="button"
               class="text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
               :aria-expanded="limitedFlowExpanded"
-              aria-controls="limited-flow-cards"
+              :aria-controls="limitedFlowCardsId"
               @click="limitedFlowExpanded = !limitedFlowExpanded"
             >
               {{ limitedFlowExpanded ? "收起" : "展开" }}
             </button>
           </div>
-          <div id="limited-flow-cards" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div :id="limitedFlowCardsId" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <UsageCard
               v-for="(card, index) in limitedFlowCards"
               v-show="limitedFlowExpanded || index === 0"
@@ -309,7 +322,6 @@
       </div>
     </div>
     
-    <Teleport to="body">
     <div v-show="loginModal" class="fixed inset-0 z-[80]">
       <button v-if="canCloseLogin" type="button" class="absolute inset-0 cursor-default bg-zinc-900/50 dark:bg-black/80" aria-label="关闭登录窗口" @click="hideLogin"></button>
       <div v-else class="absolute inset-0 bg-zinc-900/50 dark:bg-black/80"></div>
@@ -318,11 +330,11 @@
           class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="login-dialog-title"
+          :aria-labelledby="loginDialogTitleId"
         >
           <div class="flex items-start justify-between gap-3">
             <div>
-              <div id="login-dialog-title" class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">{{ canCloseLogin ? "添加账号" : "登录" }}</div>
+              <div :id="loginDialogTitleId" class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">{{ canCloseLogin ? "添加账号" : "登录" }}</div>
               <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">账号只保存在当前浏览器</div>
             </div>
             <button v-if="canCloseLogin" type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700" title="关闭" aria-label="关闭登录窗口" @click="hideLogin"><X :size="18" /></button>
@@ -378,7 +390,7 @@
               <button
                 type="button"
                 class="font-medium text-indigo-600 underline underline-offset-4 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
-                @click="openPrivacy && openPrivacy()"
+                @click="openPrivacy"
               >
                 详细请看隐私协议
               </button>
@@ -388,7 +400,22 @@
         </div>
       </div>
     </div>
-    </Teleport>
+
+    <a
+      ref="downloadLinkRef"
+      class="hidden"
+      :href="downloadUrl"
+      :download="downloadFilename"
+      tabindex="-1"
+      aria-hidden="true"
+    ></a>
+
+    <ExternalScript
+      v-if="captchaScriptRequested"
+      :src="CAPTCHA_SCRIPT_SRC"
+      @load="onCaptchaScriptLoad"
+      @error="onCaptchaScriptError"
+    />
 
     <Transition enter-active-class="transition duration-200" enter-from-class="translate-y-2 opacity-0" leave-active-class="transition duration-150" leave-to-class="translate-y-2 opacity-0">
       <div v-if="toastMessage" class="fixed inset-x-4 bottom-6 z-[70] flex justify-center pointer-events-none" role="status" aria-live="polite">
@@ -404,7 +431,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onBeforeUnmount, ref, inject, nextTick } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref, inject, nextTick, useId } from "vue";
 import {
   Camera,
   Check,
@@ -426,7 +453,9 @@ import {
   X,
 } from "@lucide/vue";
 import { toBlob } from "html-to-image";
+import ExternalScript from "@/components/ExternalScript.vue";
 import UsageCard from "@/components/UsageCard.vue";
+import { useTheme } from "@/composables/useTheme";
 
 // ========= 配置 =========
 const MAIN_API = "https://networkapi.2t.hk";
@@ -436,7 +465,6 @@ const ACTIVE_ACCOUNT_STORAGE_KEY = "unicom_active_account_id";
 const PHONE_HISTORY_KEY = "last_used_phone"; // ✅ 新增本地记忆手机号
 const APP_ID_STORAGE_KEY = "unicom_app_id";
 const DEVICE_ID_STORAGE_KEY = "unicom_device_id";
-const THEME_KEY = "theme"; 
 const LOGIN_API = MAIN_API + "/gettoken/"; 
 const OCS_API = MAIN_API + "/ocs_proxy/";
 const BASIC_API = MAIN_API + "/basicdata_proxy/";
@@ -444,6 +472,7 @@ const QCI_API = MAIN_API + "/qci_proxy/";
 const INTERVAL_MS = 30_000;
 const TOKEN_LONG_PRESS_MS = 600;
 const CAPTCHA_APPID = "195809716"; 
+const CAPTCHA_SCRIPT_SRC = "https://turing.captcha.qcloud.com/TJCaptcha.js";
 const ECS_ACC = "sGPt3BqyB6Z8STGQtqwLkkapYkz97jot5FVcLTq2IuxlXuBzS1vqZlKEe9Ac4QHJBkBAZYrKQKZyUhWatBMozAVYOL1Wd7sO/hXwCTggEcCFgpgaBytbG99HN3xavOGbeDtTZGV7eiBYSsQNhJ3wRvnvN2PKXFzBLhPa8i0j8Gs=";
 
 // ========= UI state =========
@@ -469,35 +498,30 @@ const basicIsLte = ref(false);
 const moreMenuOpen = ref(false);
 const moreMenuRef = ref(null);
 const accountMenuOpen = ref(false);
-const accountMenuRef = ref(null);
 const captureTargetRef = ref(null);
 const shareLoading = ref(false);
 const captureWatermarkVisible = ref(false);
+const downloadLinkRef = ref(null);
+const downloadUrl = ref("");
+const downloadFilename = ref("");
 const toastMessage = ref("");
 const toastKind = ref("ok");
 let toastTimer = null;
+let downloadUrlCleanupTimer = null;
 let tokenPressStartedAt = 0;
 let tokenPressPointerId = null;
 let suppressTokenClickUntil = 0;
-const openPrivacy = inject("openPrivacy");
+const openPrivacy = inject("openPrivacy", () => {});
+const limitedFlowHeadingId = useId();
+const limitedFlowCardsId = useId();
+const loginDialogTitleId = useId();
 
 // ========= Theme Logic =========
-const themeMode = ref('system'); 
-let mediaQueryList = null; 
+const { themeMode, isDark, setTheme: updateTheme } = useTheme();
 
-function applyTheme() {
-  const isSystem = themeMode.value === 'system';
-  const systemDark = mediaQueryList && mediaQueryList.matches;
-  const shouldBeDark = themeMode.value === 'dark' || (isSystem && systemDark);
-  if (shouldBeDark) document.documentElement.classList.add('dark');
-  else document.documentElement.classList.remove('dark');
-}
-function setTheme(mode) { themeMode.value = mode; localStorage.setItem(THEME_KEY, mode); applyTheme(); closeActionMenus(); }
-function onSystemThemeChange() { if (themeMode.value === 'system') applyTheme(); }
-function initTheme() {
-  const saved = localStorage.getItem(THEME_KEY);
-  themeMode.value = (saved && ['light', 'dark', 'system'].includes(saved)) ? saved : 'system';
-  applyTheme();
+function setTheme(mode) {
+  updateTheme(mode);
+  closeActionMenus();
 }
 
 // ========= Login & Computed =========
@@ -512,6 +536,10 @@ const smsLoading = ref(false);
 const smsCountdown = ref(0);
 let smsCountdownTimer = null;
 const codeInputRef = ref(null); // ✅ 自动聚焦的 ref 引用
+const captchaScriptRequested = ref(false);
+let captchaScriptPromise = null;
+let resolveCaptchaScript = null;
+let rejectCaptchaScript = null;
 const currentAppId = ref("");
 const currentDeviceId = ref("");
 const accounts = ref([]);
@@ -953,18 +981,36 @@ function stopSmsCountdown() {
   smsCountdownTimer = null;
 }
 
-function loadScript() {
-  return new Promise((resolve, reject) => {
-    if (window.TencentCaptcha) return resolve();
-    const s = document.createElement('script');
-    s.src = 'https://turing.captcha.qcloud.com/TJCaptcha.js';
-    s.onload = resolve;
-    s.onerror = () => {
-      s.remove();
-      reject(new Error("验证码组件加载失败"));
-    };
-    document.head.appendChild(s);
+function loadCaptchaScript() {
+  if (typeof globalThis.TencentCaptcha === "function") return Promise.resolve();
+  if (captchaScriptPromise) return captchaScriptPromise;
+
+  captchaScriptRequested.value = true;
+  captchaScriptPromise = new Promise((resolve, reject) => {
+    resolveCaptchaScript = resolve;
+    rejectCaptchaScript = reject;
   });
+  return captchaScriptPromise;
+}
+
+function onCaptchaScriptLoad() {
+  if (typeof globalThis.TencentCaptcha === "function") {
+    resolveCaptchaScript?.();
+  } else {
+    rejectCaptchaScript?.(new Error("验证码组件加载失败"));
+    captchaScriptPromise = null;
+    captchaScriptRequested.value = false;
+  }
+  resolveCaptchaScript = null;
+  rejectCaptchaScript = null;
+}
+
+function onCaptchaScriptError() {
+  rejectCaptchaScript?.(new Error("验证码组件加载失败"));
+  resolveCaptchaScript = null;
+  rejectCaptchaScript = null;
+  captchaScriptPromise = null;
+  captchaScriptRequested.value = false;
 }
 
 async function handleSendCode(resultToken = "") {
@@ -1015,15 +1061,15 @@ async function handleSendCode(resultToken = "") {
 }
 
 async function startCaptcha(mobileHex) {
-  await loadScript();
+  await loadCaptchaScript();
   
-  if (typeof window.TencentCaptcha !== 'function') {
+  if (typeof globalThis.TencentCaptcha !== 'function') {
     loginMsg.value = '验证码组件加载失败';
     loginMsgKind.value = 'error';
     return;
   }
 
-  const captcha = new window.TencentCaptcha(CAPTCHA_APPID, async function(res) {
+  const captcha = new globalThis.TencentCaptcha(CAPTCHA_APPID, async function(res) {
     if (res.ret === 0) {
       try {
         loginMsg.value = "正在进行安全验证...";
@@ -1247,15 +1293,21 @@ async function copyEcsToken() {
   }
 }
 
-function downloadScreenshot(blob) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `联通套餐-${new Date().toISOString().slice(0, 10)}.png`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+function releaseDownloadUrl() {
+  clearTimeout(downloadUrlCleanupTimer);
+  downloadUrlCleanupTimer = null;
+  if (downloadUrl.value) URL.revokeObjectURL(downloadUrl.value);
+  downloadUrl.value = "";
+  downloadFilename.value = "";
+}
+
+async function downloadScreenshot(blob) {
+  releaseDownloadUrl();
+  downloadUrl.value = URL.createObjectURL(blob);
+  downloadFilename.value = `联通套餐-${new Date().toISOString().slice(0, 10)}.png`;
+  await nextTick();
+  downloadLinkRef.value?.click();
+  downloadUrlCleanupTimer = setTimeout(releaseDownloadUrl, 1000);
 }
 
 async function shareScreenshot() {
@@ -1267,12 +1319,11 @@ async function shareScreenshot() {
   try {
     await nextTick();
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    const darkMode = document.documentElement.classList.contains("dark");
     const blob = await toBlob(captureTargetRef.value, {
-      backgroundColor: darkMode ? "#18181b" : "#fafafa",
+      backgroundColor: isDark.value ? "#18181b" : "#fafafa",
       cacheBust: true,
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-      filter: (node) => !(node instanceof HTMLElement && node.dataset.captureExclude === "true"),
+      filter: (node) => node !== moreMenuRef.value,
     });
     if (!blob) throw new Error("截图生成失败");
     captureWatermarkVisible.value = false;
@@ -1287,7 +1338,7 @@ async function shareScreenshot() {
       }
     }
 
-    downloadScreenshot(blob);
+    await downloadScreenshot(blob);
     showToast("图片剪贴板不可用，截图已下载", "download");
   } catch (error) {
     showToast(error.message || "截图生成失败", "error");
@@ -1297,30 +1348,14 @@ async function shareScreenshot() {
   }
 }
 
-function onDocumentPointerDown(event) {
-  if (moreMenuOpen.value && moreMenuRef.value && !moreMenuRef.value.contains(event.target)) {
-    moreMenuOpen.value = false;
-  }
-  if (accountMenuOpen.value && accountMenuRef.value && !accountMenuRef.value.contains(event.target)) {
-    accountMenuOpen.value = false;
-  }
-}
-
-function onDocumentKeydown(event) {
-  if (event.key !== "Escape") return;
+function onPageEscape() {
   if (moreMenuOpen.value || accountMenuOpen.value) closeActionMenus();
   else if (loginModal.value && canCloseLogin.value) hideLogin();
 }
 
 // Lifecycle
 onMounted(() => {
-  mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
-  if (mediaQueryList.addEventListener) { mediaQueryList.addEventListener('change', onSystemThemeChange); } 
-  else if (mediaQueryList.addListener) { mediaQueryList.addListener(onSystemThemeChange); }
-  initTheme();
   initAccounts();
-  document.addEventListener("pointerdown", onDocumentPointerDown);
-  document.addEventListener("keydown", onDocumentKeydown);
   
   setIntervalText();
   if (!getEcsToken()) { setStatus("未登录", "info"); showLogin(); } else { fetchData(); }
@@ -1332,11 +1367,6 @@ onBeforeUnmount(() => {
   stopSmsCountdown();
   activeFetchController?.abort();
   clearTimeout(toastTimer);
-  document.removeEventListener("pointerdown", onDocumentPointerDown);
-  document.removeEventListener("keydown", onDocumentKeydown);
-  if (mediaQueryList) {
-    if (mediaQueryList.removeEventListener) { mediaQueryList.removeEventListener('change', onSystemThemeChange); } 
-    else if (mediaQueryList.removeListener) { mediaQueryList.removeListener(onSystemThemeChange); }
-  }
+  releaseDownloadUrl();
 });
 </script>

@@ -20,8 +20,7 @@
   transition-duration: 300ms;
 }
 
-/* 当 html 标签有 class="dark" 时 */
-:root.dark {
+:root:has(.app-shell.dark) {
   background-color: var(--color-zinc-900);
   color: var(--color-zinc-100);
 }
@@ -36,6 +35,8 @@ body {
   overflow-x: hidden;
   overflow-x: clip;
   overscroll-behavior-x: none;
+  background-color: inherit;
+  color: inherit;
   /* 移除 body 的背景设置，让它继承 :root */
 }
 
@@ -85,7 +86,8 @@ img, video, canvas {
   to { background-position: 240px 0; }
 }
 
-#app {
+.app-shell {
+  color-scheme: light;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -96,13 +98,12 @@ img, video, canvas {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.app-shell.dark {
+  color-scheme: dark;
+}
+
 @media (max-width: 768px) {
   input, textarea, select {
     font-size: 16px !important;
   }
 }
-
-[data-flow-card="1"][data-collapsed="1"] .flow-more { display: none; }
-[data-flow-group="1"][data-collapsed="1"] .flow-group-more { display: none; }
-[data-flow-group="1"] .flow-group-more { margin-top: 1rem; }
-[data-flow-group="1"][data-collapsed="1"] .flow-group-grid > :nth-child(n + 2) { display: none; }
