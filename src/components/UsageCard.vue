@@ -32,39 +32,27 @@
 
       <div class="relative shrink-0">
         <div class="rounded-2xl bg-zinc-100 p-3 dark:bg-zinc-800">
-          <svg
+          <PhoneCall
             v-if="card.kind === 'voice'"
-            width="28"
-            height="28"
-            viewBox="0 0 24 24"
-            fill="none"
+            :size="28"
+            :stroke-width="1.5"
             class="text-zinc-600 dark:text-zinc-400"
             aria-hidden="true"
-          >
-            <path d="M6.5 3.5l3 2.2c.6.4.8 1.2.4 1.8l-1.2 1.8c-.2.3-.2.7-.1 1.1.8 2.1 2.5 3.8 4.6 4.6.4.1.8.1 1.1-.1l1.8-1.2c.6-.4 1.4-.2 1.8.4l2.2 3c.4.6.3 1.4-.2 1.9l-1.4 1.4c-.6.6-1.5.9-2.4.8-7.1-.8-12.8-6.5-13.6-13.6-.1-.9.2-1.8.8-2.4L4.6 3.7c.5-.5 1.3-.6 1.9-.2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          <svg
+          />
+          <MessageSquareText
             v-else-if="card.kind === 'sms'"
-            width="28"
-            height="28"
-            viewBox="0 0 24 24"
-            fill="none"
+            :size="28"
+            :stroke-width="1.5"
             class="text-zinc-600 dark:text-zinc-400"
             aria-hidden="true"
-          >
-            <path d="M7 8h10M7 12h6M21 12c0 4.418-4.03 8-9 8a10.5 10.5 0 0 1-3.1-.46L3 20l1.2-3.2A7.4 7.4 0 0 1 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          <svg
+          />
+          <ListFilter
             v-else
-            width="28"
-            height="28"
-            viewBox="0 0 24 24"
-            fill="none"
+            :size="28"
+            :stroke-width="1.5"
             class="text-zinc-600 dark:text-zinc-400"
             aria-hidden="true"
-          >
-            <path d="M4 7h16M6 11h12M8 15h8M10 19h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          </svg>
+          />
         </div>
         <div
           v-if="card.unlimited"
@@ -102,8 +90,9 @@
 
 <script setup>
 import { computed } from "vue";
+import { ListFilter, MessageSquareText, PhoneCall } from "@lucide/vue";
 
-const props = defineProps({
+const { card } = defineProps({
   card: {
     type: Object,
     required: true,
@@ -117,13 +106,13 @@ const props = defineProps({
 });
 
 const progressValue = computed(() => {
-  if (props.card.unlimited) return 100;
-  if (typeof props.card.percent !== "number" || !Number.isFinite(props.card.percent)) return null;
-  return Math.max(0, Math.min(100, props.card.percent));
+  if (card.unlimited) return 100;
+  if (typeof card.percent !== "number" || !Number.isFinite(card.percent)) return null;
+  return Math.max(0, Math.min(100, card.percent));
 });
 
 const progressText = computed(() => {
-  if (props.card.unlimited) return "无限量";
+  if (card.unlimited) return "无限量";
   return progressValue.value === null ? "—" : `${progressValue.value.toFixed(2)}%`;
 });
 </script>

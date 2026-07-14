@@ -1,15 +1,25 @@
 import { computed, inject, onBeforeUnmount, onMounted, readonly, ref } from "vue";
+import { getStorageItem, setStorageItem } from "@/services/storage";
 
 const THEME_STORAGE_KEY = "theme";
 const VALID_THEME_MODES = new Set(["light", "dark", "system"]);
 
 export const themeInjectionKey = Symbol("theme");
 
+function getColorSchemeQuery() {
+  try {
+    if (typeof globalThis.matchMedia !== "function") return null;
+    return globalThis.matchMedia("(prefers-color-scheme: dark)");
+  } catch {
+    return null;
+  }
+}
+
 export function createThemeController() {
-  const savedMode = localStorage.getItem(THEME_STORAGE_KEY);
+  const savedMode = getStorageItem(THEME_STORAGE_KEY);
   const themeMode = ref(VALID_THEME_MODES.has(savedMode) ? savedMode : "system");
-  const mediaQueryList = globalThis.matchMedia("(prefers-color-scheme: dark)");
-  const systemDark = ref(mediaQueryList.matches);
+  const mediaQueryList = getColorSchemeQuery();
+  const systemDark = ref(Boolean(mediaQueryList?.matches));
 
   const isDark = computed(() => (
     themeMode.value === "dark"
@@ -23,15 +33,12 @@ export function createThemeController() {
   function setTheme(mode) {
     if (!VALID_THEME_MODES.has(mode)) return;
     themeMode.value = mode;
-    localStorage.setItem(THEME_STORAGE_KEY, mode);
+    setStorageItem(THEME_STORAGE_KEY, mode);
   }
 
   onMounted(() => {
-    if (mediaQueryList.addEventListener) {
-      mediaQueryList.addEventListener("change", syncSystemTheme);
-    } else {
-      mediaQueryList.addListener?.(syncSystemTheme);
-    }
+    if (mediaQueryList?.addEventListener) mediaQueryList.addEventListener("change", syncSystemTheme);
+    else mediaQueryList?.addListener?.(syncSystemTheme);
   });
 
   onBeforeUnmount(() => {

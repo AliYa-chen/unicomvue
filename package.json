@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "node --test tests",
     "lint": "run-s lint:oxlint lint:eslint",
     "lint:fix": "run-s lint:oxlint:fix lint:eslint:fix",
     "lint:oxlint": "oxlint . --deny-warnings",

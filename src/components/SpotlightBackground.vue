@@ -15,7 +15,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, useTemplateRef, watch } from "vue";
 
 const props = defineProps({
   active: {
@@ -24,8 +24,8 @@ const props = defineProps({
   },
 });
 
-const canvasRef = ref(null);
-const hostRef = ref(null);
+const canvasRef = useTemplateRef("canvasRef");
+const hostRef = useTemplateRef("hostRef");
 
 const RAYS_COLOR = [212 / 255, 226 / 255, 241 / 255];
 const RAYS_SPEED = 0.45;
@@ -33,6 +33,8 @@ const LIGHT_SPREAD = 0.8;
 const RAY_LENGTH = 1.6;
 const FADE_DISTANCE = 0.9;
 const SATURATION = 0.6;
+const MAX_RENDER_PIXELS = 2_500_000;
+const MOBILE_FRAME_INTERVAL_MS = 1000 / 30;
 
 const fragmentShaderBody = `
 uniform float iTime;
@@ -156,7 +158,19 @@ let isWebGl2 = false;
 let rendererUnavailable = false;
 let motionQuery = null;
 let resizeObserver = null;
+let windowResizeFallbackActive = false;
 let reduceMotion = false;
+let frameInterval = 0;
+let lastFrameTime = 0;
+let maxTextureSize = 1;
+
+function getMediaQuery(query) {
+  try {
+    return typeof globalThis.matchMedia === "function" ? globalThis.matchMedia(query) : null;
+  } catch {
+    return null;
+  }
+}
 
 function compileShader(context, type, source) {
   const shader = context.createShader(type);
@@ -265,6 +279,10 @@ function initRenderer() {
     isWebGl2 = Boolean(gl);
     if (!gl) gl = canvas.getContext("webgl", contextOptions);
     if (!gl) throw new Error("当前浏览器不支持 WebGL");
+    const reportedTextureSize = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE));
+    maxTextureSize = Number.isFinite(reportedTextureSize) && reportedTextureSize > 0
+      ? Math.floor(reportedTextureSize)
+      : 1;
 
     program = createProgram(gl);
     positionBuffer = gl.createBuffer();
@@ -328,9 +346,17 @@ function resizeCanvas() {
 
   const width = Math.max(1, Math.round(canvas.clientWidth || window.innerWidth));
   const height = Math.max(1, Math.round(canvas.clientHeight || window.innerHeight));
-  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-  const nextWidth = Math.max(1, Math.round(width * pixelRatio));
-  const nextHeight = Math.max(1, Math.round(height * pixelRatio));
+  const requestedPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const pixelBudgetRatio = Math.sqrt(MAX_RENDER_PIXELS / (width * height));
+  const dimensionLimit = Math.min(maxTextureSize, MAX_RENDER_PIXELS);
+  const pixelRatio = Math.min(
+    requestedPixelRatio,
+    pixelBudgetRatio,
+    dimensionLimit / width,
+    dimensionLimit / height,
+  );
+  const nextWidth = Math.max(1, Math.floor(width * pixelRatio));
+  const nextHeight = Math.max(1, Math.floor(height * pixelRatio));
 
   if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
     canvas.width = nextWidth;
@@ -361,7 +387,10 @@ function animate(time) {
     return;
   }
 
-  renderFrame(time);
+  if (!frameInterval || time - lastFrameTime >= frameInterval) {
+    lastFrameTime = time;
+    renderFrame(time);
+  }
   animationFrame = requestAnimationFrame(animate);
 }
 
@@ -373,6 +402,7 @@ function startAnimation() {
 function stopAnimation() {
   if (animationFrame) cancelAnimationFrame(animationFrame);
   animationFrame = 0;
+  lastFrameTime = 0;
 }
 
 function clearFrame() {
@@ -437,17 +467,25 @@ function destroyRenderer() {
   program = null;
   positionBuffer = null;
   uniforms = null;
+  maxTextureSize = 1;
 }
 
 watch(() => props.active, syncPlayback);
 
 onMounted(() => {
-  motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-  if (motionQuery.addEventListener) motionQuery.addEventListener("change", syncPlayback);
-  else motionQuery.addListener?.(syncPlayback);
-  resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(handleResize);
-  if (hostRef.value) resizeObserver?.observe(hostRef.value);
-  window.addEventListener("resize", handleResize, { passive: true });
+  motionQuery = getMediaQuery("(prefers-reduced-motion: reduce)");
+  frameInterval = getMediaQuery("(pointer: coarse)")?.matches
+    ? MOBILE_FRAME_INTERVAL_MS
+    : 0;
+  if (motionQuery?.addEventListener) motionQuery.addEventListener("change", syncPlayback);
+  else motionQuery?.addListener?.(syncPlayback);
+  if (typeof ResizeObserver !== "undefined" && hostRef.value) {
+    resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(hostRef.value);
+  } else {
+    window.addEventListener("resize", handleResize, { passive: true });
+    windowResizeFallbackActive = true;
+  }
   document.addEventListener("visibilitychange", handleVisibilityChange);
   syncPlayback();
 });
@@ -456,7 +494,7 @@ onBeforeUnmount(() => {
   if (motionQuery?.removeEventListener) motionQuery.removeEventListener("change", syncPlayback);
   else motionQuery?.removeListener?.(syncPlayback);
   resizeObserver?.disconnect();
-  window.removeEventListener("resize", handleResize);
+  if (windowResizeFallbackActive) window.removeEventListener("resize", handleResize);
   document.removeEventListener("visibilitychange", handleVisibilityChange);
   destroyRenderer();
 });

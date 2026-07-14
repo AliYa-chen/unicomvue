@@ -23,23 +23,7 @@
           <!-- branch / commit -->
           <span class="inline-flex items-center gap-1.5">
             <!-- branch icon -->
-            <svg
-              class="h-4 w-4 opacity-70"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M6 3v12"></path>
-              <path d="M18 21V9"></path>
-              <path d="M6 15a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3"></path>
-              <circle cx="6" cy="18" r="2"></circle>
-              <circle cx="6" cy="4" r="2"></circle>
-              <circle cx="18" cy="20" r="2"></circle>
-            </svg>
+            <GitBranch class="h-4 w-4 opacity-70" :stroke-width="1.6" aria-hidden="true" />
 
             <span class="text-zinc-700 dark:text-zinc-300">
               {{ branchLabel }}
@@ -69,7 +53,6 @@
                    hover:decoration-zinc-500
                    dark:text-zinc-300 dark:decoration-zinc-600 dark:hover:decoration-zinc-400"
           >
-            <!-- github mark -->
             <svg
               class="h-4 w-4"
               viewBox="0 0 24 24"
@@ -140,7 +123,7 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { GitBranch } from "@lucide/vue";
 import { APP_BRANCH, APP_COMMIT } from "@/env";
 
 defineProps({
@@ -154,8 +137,7 @@ function emitOpenPrivacy() {
 
 const year = new Date().getFullYear();
 
-const branchLabel = computed(() => (APP_BRANCH ? APP_BRANCH : "local"));
-
+const branchLabel = APP_BRANCH || "local";
 const commit = APP_COMMIT || "";
-const commitShort = computed(() => (commit ? String(commit).slice(0, 7) : ""));
+const commitShort = commit ? String(commit).slice(0, 7) : "";
 </script>

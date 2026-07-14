@@ -31,11 +31,17 @@ jobs:
       - name: 启用 Corepack 并配置 pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@10.0.0 --activate
+          corepack prepare pnpm@10.30.3 --activate
           pnpm --version
 
       - name: 安装项目依赖
         run: pnpm install --frozen-lockfile
+
+      - name: 检查代码规范
+        run: pnpm run lint
+
+      - name: 运行测试
+        run: pnpm test
 
       - name: 构建项目（生成 dist）
         run: pnpm run build

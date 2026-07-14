@@ -1,7 +1,7 @@
 <script>
-import { h } from "vue";
+import { defineComponent, h } from "vue";
 
-export default {
+export default defineComponent({
   name: "ExternalScript",
   inheritAttrs: false,
   props: {
@@ -9,13 +9,14 @@ export default {
     async: { type: Boolean, default: true },
   },
   emits: ["load", "error"],
-  setup(props, { emit }) {
+  setup(props, { attrs, emit }) {
     return () => h("script", {
+      ...attrs,
       src: props.src,
       async: props.async,
       onLoad: (event) => emit("load", event),
       onError: (event) => emit("error", event),
     });
   },
-};
+});
 </script>

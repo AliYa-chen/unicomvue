@@ -4,6 +4,7 @@ import { provide, ref } from "vue";
 import FooterView from "@/components/FooterView.vue";
 import PrivacyModal from "@/components/PrivacyModal.vue";
 import SpotlightBackground from "@/components/SpotlightBackground.vue";
+import { providePrivacy } from "@/composables/usePrivacy";
 import { createThemeController, themeInjectionKey } from "@/composables/useTheme";
 
 const privacyOpen = ref(false);
@@ -13,12 +14,8 @@ const { isDark } = theme;
 function openPrivacy() {
   privacyOpen.value = true;
 }
-function closePrivacy() {
-  privacyOpen.value = false;
-}
 
-provide("openPrivacy", openPrivacy);
-provide("closePrivacy", closePrivacy);
+providePrivacy(openPrivacy);
 provide(themeInjectionKey, theme);
 </script>
 

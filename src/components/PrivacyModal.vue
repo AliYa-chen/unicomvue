@@ -1,7 +1,7 @@
 <template>
-    <div v-show="open" class="fixed inset-0 z-111" @keydown.esc.stop.prevent="emitClose">
+    <div v-show="open" class="fixed inset-0 z-111" @keydown.esc.stop.prevent="close">
         <!-- overlay -->
-        <div class="absolute inset-0 bg-zinc-900/50 backdrop-blur-[1px] dark:bg-black/80" aria-hidden="true" @click="emitClose"></div>
+        <div class="absolute inset-0 bg-zinc-900/50 backdrop-blur-[1px] dark:bg-black/80" aria-hidden="true" @click="close"></div>
 
         <!-- panel wrapper (center) -->
         <div class="relative flex min-h-full items-center justify-center p-4 sm:p-6">
@@ -30,9 +30,9 @@
                     </div>
 
                     <button ref="closeButtonRef" type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:bg-zinc-50 active:scale-[0.99]
-                   dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800" @click="emitClose"
+                   dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800" @click="close"
                         aria-label="关闭" title="关闭">
-                        ✕
+                        <X :size="18" aria-hidden="true" />
                     </button>
                 </div>
 
@@ -116,7 +116,7 @@
                     <div class="mt-5 flex items-center justify-end gap-2">
                         <button ref="confirmButtonRef" type="button" class="inline-flex items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 active:scale-[0.99]
                      dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                            @click="emitClose">
+                            @click="close">
                             我知道了
                         </button>
                     </div>
@@ -129,22 +129,23 @@
 </template>
 
 <script setup>
-import { nextTick, ref, useId, watch } from "vue";
+import { nextTick, useId, useTemplateRef, watch } from "vue";
+import { X } from "@lucide/vue";
 import ApiItem from "@/components/ApiItem.vue";
 
-const props = defineProps({
-    open: { type: Boolean, default: false },
+defineProps({
     contactEmail: { type: String, default: "aliya@nbcnm.cn" },
 });
 
-const emit = defineEmits(["update:open"]);
-const dialogRef = ref(null);
-const closeButtonRef = ref(null);
-const confirmButtonRef = ref(null);
+const open = defineModel("open", { type: Boolean, default: false });
+const dialogRef = useTemplateRef("dialogRef");
+const closeButtonRef = useTemplateRef("closeButtonRef");
+const confirmButtonRef = useTemplateRef("confirmButtonRef");
 const titleId = useId();
+let previouslyFocusedElement = null;
 
-function emitClose() {
-    emit("update:open", false);
+function close() {
+    open.value = false;
 }
 
 function focusCloseButton() {
@@ -162,15 +163,22 @@ function handleDialogTab(event) {
     else focusCloseButton();
 }
 
-async function handleOpenChange(open) {
-    if (!open) return;
+async function focusDialog(isOpen) {
+    if (isOpen) {
+        previouslyFocusedElement = typeof HTMLElement !== "undefined"
+            && document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        await nextTick();
+        if (open.value) dialogRef.value?.focus();
+        return;
+    }
+
+    const focusTarget = previouslyFocusedElement;
+    previouslyFocusedElement = null;
     await nextTick();
-    if (props.open) dialogRef.value?.focus();
+    if (focusTarget?.isConnected) focusTarget.focus();
 }
 
-watch(
-    () => props.open,
-    handleOpenChange,
-    { immediate: true, flush: "post" }
-);
+watch(open, focusDialog, { immediate: true, flush: "post" });
 </script>
