@@ -4,7 +4,7 @@
         <div class="absolute inset-0 bg-zinc-900/50 backdrop-blur-[1px] dark:bg-black/80" @click="emitClose"></div>
 
         <!-- panel wrapper (center) -->
-        <div class="relative z-10 flex min-h-full items-center justify-center p-4 sm:p-6">
+        <div class="relative flex min-h-full items-center justify-center p-4 sm:p-6">
             <!-- panel -->
             <div class="w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
                 role="dialog" aria-modal="true">
