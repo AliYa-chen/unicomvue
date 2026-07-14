@@ -450,7 +450,7 @@ async function fetchData() {
   setStatus("请求中…", "info");
   
   try {
-    const r = await fetch(OCS_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ecs_token, ecs_acc: ECS_ACC }) });
+    const r = await fetch(OCS_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify({ ecs_token, ecs_acc: ECS_ACC }) });
     const t = await r.text();
     
     if (looksLikeHtml(t)) throw new Error("API返回HTML");
@@ -481,7 +481,7 @@ async function fetchBasicDataAndRenderRate() {
   const t = getEcsToken(); 
   if (!t) return;
   try {
-    const r = await fetch(BASIC_API, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify({ ecs_token: t, ecs_acc: ECS_ACC }) });
+    const r = await fetch(BASIC_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8", "Accept": "application/json" }, body: JSON.stringify({ ecs_token: t, ecs_acc: ECS_ACC }) });
     const j = await r.json();
     if (handleCommonErrors(j, r.status)) return;
     if (j.code === "0000") {
@@ -497,7 +497,7 @@ async function fetchQciAndRender() {
   const t = getEcsToken(); 
   if (!t) return;
   try {
-    const r = await fetch(QCI_API, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" }, body: JSON.stringify({ ecs_token: t, ecs_acc: ECS_ACC }) });
+    const r = await fetch(QCI_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8", "Accept": "application/json" }, body: JSON.stringify({ ecs_token: t, ecs_acc: ECS_ACC }) });
     const j = await r.json();
     if (handleCommonErrors(j, r.status)) return;
     if (j.code === "0000") {
