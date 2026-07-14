@@ -109,7 +109,7 @@
                   <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"><UserRound :size="16" /></span>
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ accountDisplayName(account) }}</span>
-                    <span class="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{{ accountLoginDescription(account) }}</span>
+                    <span class="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{{ accountPackageDescription(account) }}</span>
                   </span>
                   <Check v-if="account.id === activeAccountId" :size="17" class="shrink-0 text-indigo-600 dark:text-indigo-400" />
                 </button>
@@ -126,22 +126,38 @@
     </header>
 
     <main class="mx-auto max-w-4xl px-4 py-6 sm:py-8 lg:py-8">
-    <div ref="captureTargetRef" class="space-y-6">
+    <div ref="captureTargetRef" class="relative space-y-6">
+      <div
+        v-if="captureWatermarkVisible"
+        class="capture-watermark"
+        data-capture-watermark="true"
+        aria-hidden="true"
+      ></div>
       <div class="rounded-2xl border border-zinc-200 bg-white p-4 hover:shadow-sm sm:p-6 dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <h1
-              class="text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl cursor-pointer select-none truncate dark:text-zinc-100"
-              :title="packageName ? `套餐：${packageName}（点击复制 ecs_token）` : '点击复制 ecs_token'"
-              @click="copyEcsToken"
-            >
-              {{ packageName || "余量 / 用量展示" }}
+            <h1 class="min-w-0 text-xl font-semibold tracking-tight sm:text-2xl">
+              <button
+                type="button"
+                class="block max-w-full cursor-pointer touch-manipulation select-none truncate text-left text-zinc-900 transition-opacity active:opacity-60 dark:text-zinc-100"
+                :title="packageName ? `套餐：${packageName}（点击复制 onlin_token，长按复制 ecs_token）` : '点击复制 onlin_token，长按复制 ecs_token'"
+                aria-label="点击复制 onlin_token，长按复制 ecs_token"
+                @click="handleTokenButtonClick"
+                @pointerdown="startTokenLongPress"
+                @pointerup="endTokenLongPress"
+                @pointerleave="cancelTokenLongPress"
+                @pointercancel="cancelTokenLongPress"
+                @contextmenu.prevent
+                @dragstart.prevent
+              >
+                {{ packageName || "余量 / 用量展示" }}
+              </button>
             </h1>
 
             <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
               <span class="font-medium text-zinc-700 dark:text-zinc-300">余量 / 用量</span>
               <span class="mx-2 text-zinc-300 dark:text-zinc-700">•</span>
-              <span>点击标题可复制 ecs_token</span>
+              <span>点击复制 onlin_token · 长按复制 ecs_token</span>
             </div>
           </div>
 
@@ -211,7 +227,7 @@
                   <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"><UserRound :size="16" /></span>
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ accountDisplayName(account) }}</span>
-                    <span class="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{{ accountLoginDescription(account) }}</span>
+                    <span class="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{{ accountPackageDescription(account) }}</span>
                   </span>
                   <Check v-if="account.id === activeAccountId" :size="17" class="shrink-0 text-indigo-600 dark:text-indigo-400" />
                 </button>
@@ -382,6 +398,7 @@ const OCS_API = MAIN_API + "/ocs_proxy/";
 const BASIC_API = MAIN_API + "/basicdata_proxy/";
 const QCI_API = MAIN_API + "/qci_proxy/";
 const INTERVAL_MS = 30_000;
+const TOKEN_LONG_PRESS_MS = 600;
 const CAPTCHA_APPID = "195809716"; 
 const ECS_ACC = "sGPt3BqyB6Z8STGQtqwLkkapYkz97jot5FVcLTq2IuxlXuBzS1vqZlKEe9Ac4QHJBkBAZYrKQKZyUhWatBMozAVYOL1Wd7sO/hXwCTggEcCFgpgaBytbG99HN3xavOGbeDtTZGV7eiBYSsQNhJ3wRvnvN2PKXFzBLhPa8i0j8Gs=";
 
@@ -410,9 +427,13 @@ const accountMenuOpen = ref(false);
 const accountMenuRef = ref(null);
 const captureTargetRef = ref(null);
 const shareLoading = ref(false);
+const captureWatermarkVisible = ref(false);
 const toastMessage = ref("");
 const toastKind = ref("ok");
 let toastTimer = null;
+let tokenPressStartedAt = 0;
+let tokenPressPointerId = null;
+let suppressTokenClickUntil = 0;
 const openPrivacy = inject("openPrivacy");
 
 // ========= Theme Logic =========
@@ -484,10 +505,8 @@ function normalizeMaskedMobile(mobile) {
 function accountDisplayName(account) {
   return maskPhone(account?.phone) || normalizeMaskedMobile(account?.mobile) || `Token · ${tokenSuffix(account?.token)}`;
 }
-function accountLoginDescription(account) {
-  return account?.loginType === "token"
-    ? "Token 登录"
-    : "短信验证码登录";
+function accountPackageDescription(account) {
+  return String(account?.packageName || "").trim() || "套餐信息待获取";
 }
 function createAccountId() { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 
@@ -525,6 +544,7 @@ function persistAccounts() {
 
 function normalizeStoredAccount(account) {
   const token = typeof account?.token === "string" ? account.token.trim() : "";
+  const onlinToken = typeof account?.onlinToken === "string" ? account.onlinToken.trim() : "";
   if (token.length <= 20) return null;
   const loginType = account.loginType === "token" || account.loginType === "sms"
     ? account.loginType
@@ -532,9 +552,11 @@ function normalizeStoredAccount(account) {
   return {
     id: typeof account.id === "string" && account.id ? account.id : createAccountId(),
     token,
+    onlinToken,
     phone: loginType === "sms" && /^1\d{10}$/.test(account.phone) ? account.phone : "",
     mobile: loginType === "token" ? normalizeMaskedMobile(account.mobile) : "",
     loginType,
+    packageName: String(account.packageName || "").trim(),
     createdAt: Number(account.createdAt) || Date.now(),
     updatedAt: Number(account.updatedAt) || Date.now(),
   };
@@ -569,9 +591,11 @@ function initAccounts() {
 }
 
 function getEcsToken() { return currentAccount.value?.token || localStorage.getItem(STORAGE_KEY) || ""; }
+function getOnlinToken() { return currentAccount.value?.onlinToken || ""; }
 
-function setEcsToken(token, phone = "", loginType = "token") {
+function setEcsToken(token, phone = "", loginType = "token", onlinToken = "") {
   const cleanToken = String(token || "").trim();
+  const cleanOnlinToken = String(onlinToken || "").trim();
   const cleanLoginType = loginType === "sms" ? "sms" : "token";
   const cleanPhone = cleanLoginType === "sms" && /^1\d{10}$/.test(phone) ? phone : "";
   if (cleanToken.length <= 20) return null;
@@ -584,6 +608,7 @@ function setEcsToken(token, phone = "", loginType = "token") {
     accounts.value[index] = {
       ...existing,
       token: cleanToken,
+      onlinToken: cleanOnlinToken || existing.onlinToken || "",
       phone: cleanLoginType === "sms" ? (cleanPhone || existing.phone) : "",
       mobile: cleanLoginType === "token" ? normalizeMaskedMobile(existing.mobile) : "",
       loginType: cleanLoginType,
@@ -593,9 +618,11 @@ function setEcsToken(token, phone = "", loginType = "token") {
     accounts.value.push({
       id: createAccountId(),
       token: cleanToken,
+      onlinToken: cleanOnlinToken,
       phone: cleanPhone,
       mobile: "",
       loginType: cleanLoginType,
+      packageName: "",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -624,6 +651,16 @@ function updateTokenAccountMobile(mobile) {
   const index = accounts.value.findIndex((item) => item.id === account.id);
   if (index < 0) return;
   accounts.value[index] = { ...account, phone: "", mobile: normalizedMobile, updatedAt: Date.now() };
+  persistAccounts();
+}
+
+function updateAccountPackageName(token, name) {
+  const normalizedName = String(name || "").trim();
+  if (!normalizedName) return;
+
+  const index = accounts.value.findIndex((account) => account.token === token);
+  if (index < 0 || accounts.value[index].packageName === normalizedName) return;
+  accounts.value[index] = { ...accounts.value[index], packageName: normalizedName };
   persistAccounts();
 }
 
@@ -769,9 +806,10 @@ function makeOcsCard(card) {
   `;
 }
 
-function renderFromOcs(json) {
+function renderFromOcs(json, accountToken) {
   if (json?.code && String(json.code) !== "0000") throw new Error(`Code ${json.code}`);
   packageName.value = String(json?.packageName || json?.result?.packageName || "").trim();
+  updateAccountPackageName(accountToken, packageName.value);
   const cards = buildCardsFromOcs(json);
   if (!cards.length) { showEmpty.value = true; cardsHtml.value = ""; return; }
   showEmpty.value = false;
@@ -825,7 +863,7 @@ async function fetchData() {
 
     if (j?.ok === false || (j?.code && j.code !== "0000")) throw new Error(j?.msg || "查询失败");
 
-    renderFromOcs(j);
+    renderFromOcs(j, ecs_token);
     
     await fetchBasicDataAndRenderRate(ecs_token, controller.signal);
     if (controller.signal.aborted || ecs_token !== getEcsToken()) return;
@@ -1051,7 +1089,7 @@ async function doLogin() {
     
     // ✅ 优化点：直接读取后端返回的 ecs_token，不依赖容易越界的字符串切割
     if (d.ecs_token) {
-      setEcsToken(d.ecs_token, loginPhone.value, "sms");
+      setEcsToken(d.ecs_token, loginPhone.value, "sms", d.onlin_token);
       hideLogin(); 
       resetDashboard();
       fetchData(); 
@@ -1145,13 +1183,69 @@ function handleMenuRefresh() {
   closeActionMenus();
   fetchData();
 }
-async function copyEcsToken() {
+
+function startTokenLongPress(event) {
+  if (!event.isPrimary || event.button !== 0) return;
+  tokenPressStartedAt = performance.now();
+  tokenPressPointerId = event.pointerId;
+  suppressTokenClickUntil = 0;
+}
+
+function endTokenLongPress(event) {
+  if (event.pointerId !== tokenPressPointerId) return;
+  const pressDuration = performance.now() - tokenPressStartedAt;
+  tokenPressStartedAt = 0;
+  tokenPressPointerId = null;
+
+  if (pressDuration >= TOKEN_LONG_PRESS_MS) {
+    suppressTokenClickUntil = performance.now() + 1000;
+    void copyEcsToken();
+  }
+}
+
+function cancelTokenLongPress() {
+  if (tokenPressPointerId === null) return;
+  tokenPressStartedAt = 0;
+  tokenPressPointerId = null;
+  suppressTokenClickUntil = 0;
+}
+
+function handleTokenButtonClick(event) {
+  if (performance.now() <= suppressTokenClickUntil) {
+    suppressTokenClickUntil = 0;
+    event.preventDefault();
+    return;
+  }
+  void copyOnlinToken();
+}
+
+async function copyOnlinToken() {
+  const onlinToken = getOnlinToken();
+  if (!onlinToken) {
+    showToast("当前账号没有 onlin_token，请使用短信验证码登录", "error");
+    return;
+  }
   try {
-    await navigator.clipboard.writeText(getEcsToken());
-    setStatus("Token 复制成功", "ok");
-    showToast("Token 已复制");
+    await navigator.clipboard.writeText(onlinToken);
+    setStatus("onlin_token 复制成功", "ok");
+    showToast("onlin_token 已复制");
   } catch {
-    showToast("浏览器未允许复制 Token", "error");
+    showToast("浏览器未允许复制 onlin_token", "error");
+  }
+}
+
+async function copyEcsToken() {
+  const ecsToken = getEcsToken();
+  if (!ecsToken) {
+    showToast("当前账号没有 ecs_token，请先登录", "error");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(ecsToken);
+    setStatus("ecs_token 复制成功", "ok");
+    showToast("ecs_token 已复制");
+  } catch {
+    showToast("浏览器未允许复制 ecs_token", "error");
   }
 }
 
@@ -1169,6 +1263,7 @@ function downloadScreenshot(blob) {
 async function shareScreenshot() {
   if (!captureTargetRef.value || shareLoading.value) return;
   shareLoading.value = true;
+  captureWatermarkVisible.value = true;
   closeActionMenus();
 
   try {
@@ -1182,6 +1277,7 @@ async function shareScreenshot() {
       filter: (node) => !(node instanceof HTMLElement && node.dataset.captureExclude === "true"),
     });
     if (!blob) throw new Error("截图生成失败");
+    captureWatermarkVisible.value = false;
 
     if (navigator.clipboard?.write && globalThis.ClipboardItem) {
       try {
@@ -1198,6 +1294,7 @@ async function shareScreenshot() {
   } catch (error) {
     showToast(error.message || "截图生成失败", "error");
   } finally {
+    captureWatermarkVisible.value = false;
     shareLoading.value = false;
   }
 }

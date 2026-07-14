@@ -13,10 +13,10 @@
                     class="flex items-start justify-between gap-3 border-b border-zinc-100 p-5 sm:p-6 dark:border-zinc-800">
                     <div class="min-w-0">
                         <div class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-                            隐私 / Cookie / ecs_token 说明
+                            隐私 / Cookie / Token 说明
                         </div>
                         <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                            登录验证码仅用于获取 <span class="font-mono">ecs_token</span>，不做任何记录
+                            登录验证码仅用于获取 <span class="font-mono">ecs_token</span> 与 <span class="font-mono">onlin_token</span>，不做任何记录
                         </div>
                     </div>
 
@@ -32,20 +32,20 @@
                     <div class="max-h-[50vh] overflow-auto pr-1">
                         <div class="space-y-5 text-sm text-zinc-700 dark:text-zinc-200">
                             <section class="space-y-2">
-                                <div class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">关于登录与 ecs_token
+                                <div class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">关于登录与 Token
                                 </div>
 
                                 <p class="leading-relaxed">
                                     本工具通过中国联通官方接口进行查询。手机号与短信验证码仅用于向联通获取
-                                    <span class="font-mono">ecs_token</span> 令牌，以便查询您本人账号的套餐、流量、速率等信息。
+                                    <span class="font-mono">ecs_token</span> 与 <span class="font-mono">onlin_token</span>，以便查询账号信息及按需复制使用。
                                 </p>
 
                                 <ul class="list-disc space-y-1 pl-5 leading-relaxed">
                                     <li>本项目服务端 <span class="font-semibold">不会持久化存储</span> 您的手机号、验证码或 <span
-                                            class="font-mono">ecs_token</span></li>
-                                    <li><span class="font-mono">ecs_token</span> 仅保存在浏览器本地缓存（LocalStorage），用于免重复登录</li>
+                                            class="font-mono">ecs_token / onlin_token</span></li>
+                                    <li><span class="font-mono">ecs_token / onlin_token</span> 仅保存在浏览器本地缓存（LocalStorage）</li>
                                     <li><span class="font-mono">appid</span> 与设备标识仅保存在浏览器本地，用于在登录流程中保持设备身份一致</li>
-                                    <li>你可随时点击【退出】清除本地 <span class="font-mono">ecs_token</span></li>
+                                    <li>你可随时点击【退出】清除本地 <span class="font-mono">ecs_token / onlin_token</span></li>
                                     <li>本页面不需要第三方 Cookie</li>
                                 </ul>
 

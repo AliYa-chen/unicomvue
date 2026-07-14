@@ -5,6 +5,15 @@
 :root {
   background-color: var(--color-zinc-50);
   color: var(--color-zinc-900);
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   /* 在这里定义全局过渡，这就不用在每个 div 上写 transition 了 */
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -21,7 +30,38 @@
 body {
   margin: 0;
   padding: 0;
+  width: 100%;
+  max-width: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
   /* 移除 body 的背景设置，让它继承 :root */
+}
+
+img, video, canvas {
+  max-width: 100%;
+}
+
+.screen-watermark,
+.capture-watermark {
+  margin: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120' viewBox='0 0 200 120'%3E%3Ctext x='24' y='70' fill='%2371717a' fill-opacity='.09' font-family='Arial,sans-serif' font-size='16' font-weight='600' letter-spacing='1' transform='rotate(-18 100 60)'%3Enet.2t.hk%3C/text%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: repeat;
+}
+
+.screen-watermark {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.capture-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
 }
 
 .rainbow-bar {
@@ -46,7 +86,12 @@ body {
 }
 
 #app {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-x: clip;
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
