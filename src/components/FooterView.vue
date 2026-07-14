@@ -53,12 +53,6 @@
               #{{ commitShort }}
             </span>
           </span>
-
-          <span class="hidden sm:inline opacity-40">·</span>
-
-          <span class="text-zinc-500 dark:text-zinc-500">
-            构建：{{ buildTimeText }}
-          </span>
         </div>
 
         <!-- right links -->
@@ -147,7 +141,7 @@
 
 <script setup>
 import { computed } from "vue";
-import { APP_BRANCH, APP_COMMIT, APP_BUILD_TIME } from "@/env";
+import { APP_BRANCH, APP_COMMIT } from "@/env";
 
 defineProps({
   contactEmail: { type: String, default: "aliya@nbcnm.cn" },
@@ -160,14 +154,4 @@ const branchLabel = computed(() => (APP_BRANCH ? APP_BRANCH : "local"));
 
 const commit = APP_COMMIT || "";
 const commitShort = computed(() => (commit ? String(commit).slice(0, 7) : ""));
-
-const buildTimeText = computed(() => {
-  if (!APP_BUILD_TIME) return "—";
-  const d = new Date(APP_BUILD_TIME);
-  if (Number.isNaN(d.getTime())) return String(APP_BUILD_TIME);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
-});
 </script>
