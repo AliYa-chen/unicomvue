@@ -1,9 +1,11 @@
 <template>
   <div
-    class="pointer-events-none fixed inset-0 z-0 overflow-hidden opacity-0 transition-opacity duration-500 dark:opacity-60"
+    ref="hostRef"
+    class="pointer-events-none fixed inset-0 z-[1] overflow-hidden opacity-0 transition-opacity duration-500 dark:opacity-[.62]"
     aria-hidden="true"
+    data-light-rays-background
   >
-    <canvas ref="canvasRef" class="h-full w-full"></canvas>
+    <canvas ref="canvasRef" class="block h-full w-full" data-light-rays-canvas></canvas>
   </div>
 </template>
 
@@ -11,108 +13,350 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 
 const canvasRef = ref(null);
+const hostRef = ref(null);
+
+const RAYS_COLOR = [212 / 255, 226 / 255, 241 / 255];
+const RAYS_SPEED = 0.45;
+const LIGHT_SPREAD = 0.8;
+const RAY_LENGTH = 1.6;
+const FADE_DISTANCE = 0.9;
+const SATURATION = 0.6;
+
+const fragmentShaderBody = `
+uniform float iTime;
+uniform vec2 iResolution;
+uniform vec2 rayPos;
+uniform vec2 rayDir;
+uniform vec3 raysColor;
+uniform float raysSpeed;
+uniform float lightSpread;
+uniform float rayLength;
+uniform float pulsating;
+uniform float fadeDistance;
+uniform float saturation;
+uniform vec2 mousePos;
+uniform float mouseInfluence;
+uniform float noiseAmount;
+uniform float distortion;
+
+float noise(vec2 st) {
+  return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+}
+
+float rayStrength(
+  vec2 raySource,
+  vec2 rayRefDirection,
+  vec2 coord,
+  float seedA,
+  float seedB,
+  float speed
+) {
+  vec2 sourceToCoord = coord - raySource;
+  vec2 dirNorm = normalize(sourceToCoord);
+  float cosAngle = dot(dirNorm, rayRefDirection);
+  float distortedAngle = cosAngle
+    + distortion * sin(iTime * 2.0 + length(sourceToCoord) * 0.01) * 0.2;
+  float spreadFactor = pow(
+    max(distortedAngle, 0.0),
+    1.0 / max(lightSpread, 0.001)
+  );
+
+  float distanceToSource = length(sourceToCoord);
+  float maxDistance = iResolution.x * rayLength;
+  float lengthFalloff = clamp(
+    (maxDistance - distanceToSource) / maxDistance,
+    0.0,
+    1.0
+  );
+  float fadeFalloff = clamp(
+    (iResolution.x * fadeDistance - distanceToSource)
+      / (iResolution.x * fadeDistance),
+    0.5,
+    1.0
+  );
+  float pulse = pulsating > 0.5
+    ? (0.8 + 0.2 * sin(iTime * speed * 3.0))
+    : 1.0;
+  float baseStrength = clamp(
+    (0.45 + 0.15 * sin(distortedAngle * seedA + iTime * speed))
+      + (0.3 + 0.2 * cos(-distortedAngle * seedB + iTime * speed)),
+    0.0,
+    1.0
+  );
+
+  return baseStrength * lengthFalloff * fadeFalloff * spreadFactor * pulse;
+}
+
+vec4 renderLightRays(vec2 fragCoord) {
+  vec2 coord = vec2(fragCoord.x, iResolution.y - fragCoord.y);
+  vec2 finalRayDir = rayDir;
+
+  if (mouseInfluence > 0.0) {
+    vec2 mouseScreenPos = mousePos * iResolution.xy;
+    vec2 mouseDirection = normalize(mouseScreenPos - rayPos);
+    finalRayDir = normalize(mix(rayDir, mouseDirection, mouseInfluence));
+  }
+
+  vec4 rays1 = vec4(1.0) * rayStrength(
+    rayPos,
+    finalRayDir,
+    coord,
+    36.2214,
+    21.11349,
+    1.5 * raysSpeed
+  );
+  vec4 rays2 = vec4(1.0) * rayStrength(
+    rayPos,
+    finalRayDir,
+    coord,
+    22.3991,
+    18.0234,
+    1.1 * raysSpeed
+  );
+  vec4 color = rays1 * 0.5 + rays2 * 0.4;
+
+  if (noiseAmount > 0.0) {
+    float noiseValue = noise(coord * 0.01 + iTime * 0.1);
+    color.rgb *= 1.0 - noiseAmount + noiseAmount * noiseValue;
+  }
+
+  float brightness = 1.0 - coord.y / iResolution.y;
+  color.r *= 0.1 + brightness * 0.8;
+  color.g *= 0.3 + brightness * 0.6;
+  color.b *= 0.5 + brightness * 0.5;
+
+  if (saturation != 1.0) {
+    float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    color.rgb = mix(vec3(gray), color.rgb, saturation);
+  }
+
+  color.rgb *= raysColor;
+  return color;
+}
+`;
 
 let animationFrame = 0;
-let lastFrameAt = 0;
+let gl = null;
+let program = null;
+let positionBuffer = null;
+let uniforms = null;
+let isWebGl2 = false;
+let rendererUnavailable = false;
 let motionQuery = null;
 let themeObserver = null;
+let resizeObserver = null;
 let isDark = false;
 let reduceMotion = false;
 
+function compileShader(context, type, source) {
+  const shader = context.createShader(type);
+  if (!shader) throw new Error("无法创建 WebGL 着色器");
+  context.shaderSource(shader, source);
+  context.compileShader(shader);
+
+  if (context.getShaderParameter(shader, context.COMPILE_STATUS)) return shader;
+
+  const message = context.getShaderInfoLog(shader) || "未知着色器错误";
+  context.deleteShader(shader);
+  throw new Error(message);
+}
+
+function createProgram(context) {
+  const supportsHighPrecision = isWebGl2 || Boolean(
+    context.getShaderPrecisionFormat(context.FRAGMENT_SHADER, context.HIGH_FLOAT)?.precision,
+  );
+  const fragmentPrecision = supportsHighPrecision ? "highp" : "mediump";
+  const vertexSource = isWebGl2
+    ? `#version 300 es
+in vec2 position;
+void main() {
+  gl_Position = vec4(position, 0.0, 1.0);
+}`
+    : `attribute vec2 position;
+void main() {
+  gl_Position = vec4(position, 0.0, 1.0);
+}`;
+  const fragmentSource = isWebGl2
+    ? `#version 300 es
+precision ${fragmentPrecision} float;
+${fragmentShaderBody}
+out vec4 outColor;
+void main() {
+  outColor = renderLightRays(gl_FragCoord.xy);
+}`
+    : `precision ${fragmentPrecision} float;
+${fragmentShaderBody}
+void main() {
+  gl_FragColor = renderLightRays(gl_FragCoord.xy);
+}`;
+  const vertexShader = compileShader(context, context.VERTEX_SHADER, vertexSource);
+  let fragmentShader = null;
+
+  try {
+    fragmentShader = compileShader(context, context.FRAGMENT_SHADER, fragmentSource);
+  } catch (error) {
+    context.deleteShader(vertexShader);
+    throw error;
+  }
+
+  const nextProgram = context.createProgram();
+  if (!nextProgram) {
+    context.deleteShader(vertexShader);
+    context.deleteShader(fragmentShader);
+    throw new Error("无法创建 WebGL 程序");
+  }
+
+  context.attachShader(nextProgram, vertexShader);
+  context.attachShader(nextProgram, fragmentShader);
+  context.linkProgram(nextProgram);
+  context.deleteShader(vertexShader);
+  context.deleteShader(fragmentShader);
+
+  if (context.getProgramParameter(nextProgram, context.LINK_STATUS)) return nextProgram;
+
+  const message = context.getProgramInfoLog(nextProgram) || "未知 WebGL 链接错误";
+  context.deleteProgram(nextProgram);
+  throw new Error(message);
+}
+
+function setStaticUniforms() {
+  if (!gl || !program || !uniforms) return;
+
+  gl.useProgram(program);
+  gl.uniform3f(uniforms.raysColor, ...RAYS_COLOR);
+  gl.uniform1f(uniforms.raysSpeed, RAYS_SPEED);
+  gl.uniform1f(uniforms.lightSpread, LIGHT_SPREAD);
+  gl.uniform1f(uniforms.rayLength, RAY_LENGTH);
+  gl.uniform1f(uniforms.pulsating, 0);
+  gl.uniform1f(uniforms.fadeDistance, FADE_DISTANCE);
+  gl.uniform1f(uniforms.saturation, SATURATION);
+  gl.uniform2f(uniforms.mousePos, 0.5, 0.5);
+  gl.uniform1f(uniforms.mouseInfluence, 0.1);
+  gl.uniform1f(uniforms.noiseAmount, 0);
+  gl.uniform1f(uniforms.distortion, 0);
+}
+
+function initRenderer() {
+  const canvas = canvasRef.value;
+  if (!canvas || program || rendererUnavailable) return Boolean(program);
+
+  const contextOptions = {
+    alpha: true,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    premultipliedAlpha: false,
+    preserveDrawingBuffer: false,
+    powerPreference: "default",
+  };
+
+  try {
+    gl = canvas.getContext("webgl2", contextOptions);
+    isWebGl2 = Boolean(gl);
+    if (!gl) gl = canvas.getContext("webgl", contextOptions);
+    if (!gl) throw new Error("当前浏览器不支持 WebGL");
+
+    program = createProgram(gl);
+    positionBuffer = gl.createBuffer();
+    if (!positionBuffer) throw new Error("无法创建 WebGL 顶点缓冲区");
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 3, -1, -1, 3]),
+      gl.STATIC_DRAW,
+    );
+
+    const positionLocation = gl.getAttribLocation(program, "position");
+    if (positionLocation < 0) throw new Error("WebGL 顶点属性 position 不可用");
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+    const uniformNames = [
+      "iTime",
+      "iResolution",
+      "rayPos",
+      "rayDir",
+      "raysColor",
+      "raysSpeed",
+      "lightSpread",
+      "rayLength",
+      "pulsating",
+      "fadeDistance",
+      "saturation",
+      "mousePos",
+      "mouseInfluence",
+      "noiseAmount",
+      "distortion",
+    ];
+    uniforms = Object.fromEntries(uniformNames.map((name) => {
+      const location = gl.getUniformLocation(program, name);
+      if (location === null) throw new Error(`WebGL uniform ${name} 不可用`);
+      return [name, location];
+    }));
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
+    gl.clearColor(0, 0, 0, 0);
+    setStaticUniforms();
+    resizeCanvas();
+    return true;
+  } catch (error) {
+    if (gl && positionBuffer) gl.deleteBuffer(positionBuffer);
+    if (gl && program) gl.deleteProgram(program);
+    gl = null;
+    program = null;
+    positionBuffer = null;
+    uniforms = null;
+    rendererUnavailable = true;
+    console.warn("WebGL 光束背景初始化失败：", error);
+    return false;
+  }
+}
+
 function resizeCanvas() {
   const canvas = canvasRef.value;
-  if (!canvas) return;
+  if (!canvas || !gl || !program || !uniforms) return;
 
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
-  const nextWidth = Math.round(width * pixelRatio);
-  const nextHeight = Math.round(height * pixelRatio);
+  const width = Math.max(1, Math.round(canvas.clientWidth || window.innerWidth));
+  const height = Math.max(1, Math.round(canvas.clientHeight || window.innerHeight));
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const nextWidth = Math.max(1, Math.round(width * pixelRatio));
+  const nextHeight = Math.max(1, Math.round(height * pixelRatio));
 
   if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
     canvas.width = nextWidth;
     canvas.height = nextHeight;
   }
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
 
-  const context = canvas.getContext("2d");
-  context?.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  const drawingWidth = gl.drawingBufferWidth;
+  const drawingHeight = gl.drawingBufferHeight;
+  gl.viewport(0, 0, drawingWidth, drawingHeight);
+  gl.useProgram(program);
+  gl.uniform2f(uniforms.iResolution, drawingWidth, drawingHeight);
+  gl.uniform2f(uniforms.rayPos, drawingWidth * 0.5, drawingHeight * -0.2);
+  gl.uniform2f(uniforms.rayDir, 0, 1);
 }
 
-function drawSpotlight(context, x, y, radius, color, scaleX, scaleY) {
-  context.save();
-  context.translate(x, y);
-  context.scale(scaleX, scaleY);
+function renderFrame(time = 0) {
+  if (!gl || !program || !uniforms) return;
 
-  const gradient = context.createRadialGradient(0, 0, 0, 0, 0, radius);
-  gradient.addColorStop(0, `rgba(${color}, 0.16)`);
-  gradient.addColorStop(0.36, `rgba(${color}, 0.08)`);
-  gradient.addColorStop(1, `rgba(${color}, 0)`);
-  context.fillStyle = gradient;
-  context.fillRect(-radius, -radius, radius * 2, radius * 2);
-  context.restore();
-}
-
-function drawScene(time = 0) {
-  const canvas = canvasRef.value;
-  const context = canvas?.getContext("2d");
-  if (!canvas || !context) return;
-
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const span = Math.max(width, height);
-  const phase = time / 1000;
-
-  context.clearRect(0, 0, width, height);
-  context.globalCompositeOperation = "screen";
-
-  drawSpotlight(
-    context,
-    width * (0.14 + Math.sin(phase * 0.09) * 0.08),
-    height * (-0.06 + Math.cos(phase * 0.07) * 0.08),
-    span * 0.74,
-    "56, 189, 178",
-    1.45,
-    0.72,
-  );
-  drawSpotlight(
-    context,
-    width * (0.92 + Math.cos(phase * 0.08) * 0.07),
-    height * (0.38 + Math.sin(phase * 0.065) * 0.1),
-    span * 0.7,
-    "99, 102, 241",
-    1.25,
-    0.82,
-  );
-  drawSpotlight(
-    context,
-    width * (0.42 + Math.sin(phase * 0.055) * 0.1),
-    height * (1.08 + Math.cos(phase * 0.075) * 0.06),
-    span * 0.64,
-    "244, 114, 182",
-    1.55,
-    0.62,
-  );
-
-  context.globalCompositeOperation = "source-over";
+  gl.useProgram(program);
+  gl.uniform1f(uniforms.iTime, time * 0.001);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
 function animate(time) {
-  if (!isDark || reduceMotion || document.hidden) {
+  if (!isDark || reduceMotion || document.hidden || !program) {
     animationFrame = 0;
     return;
   }
 
-  if (time - lastFrameAt >= 32) {
-    drawScene(time);
-    lastFrameAt = time;
-  }
+  renderFrame(time);
   animationFrame = requestAnimationFrame(animate);
 }
 
 function startAnimation() {
-  if (animationFrame || !isDark || reduceMotion || document.hidden) return;
+  if (animationFrame || !isDark || reduceMotion || document.hidden || !program) return;
   animationFrame = requestAnimationFrame(animate);
 }
 
@@ -121,28 +365,38 @@ function stopAnimation() {
   animationFrame = 0;
 }
 
+function clearFrame() {
+  if (!gl) return;
+  gl.clear(gl.COLOR_BUFFER_BIT);
+}
+
 function syncPlayback() {
   isDark = document.documentElement.classList.contains("dark");
   reduceMotion = Boolean(motionQuery?.matches);
-  resizeCanvas();
 
   if (!isDark) {
     stopAnimation();
-    canvasRef.value?.getContext("2d")?.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    clearFrame();
     return;
   }
 
+  if (!initRenderer()) return;
+  resizeCanvas();
+
   if (reduceMotion) {
     stopAnimation();
-    drawScene(0);
+    renderFrame(0);
     return;
   }
+
+  renderFrame(performance.now());
   startAnimation();
 }
 
 function handleResize() {
+  if (!isDark || !initRenderer()) return;
   resizeCanvas();
-  if (isDark) drawScene(reduceMotion ? 0 : performance.now());
+  renderFrame(reduceMotion ? 0 : performance.now());
 }
 
 function handleVisibilityChange() {
@@ -150,21 +404,63 @@ function handleVisibilityChange() {
   else syncPlayback();
 }
 
+function handleContextLost(event) {
+  event.preventDefault();
+  stopAnimation();
+  gl = null;
+  program = null;
+  positionBuffer = null;
+  uniforms = null;
+  rendererUnavailable = false;
+}
+
+function handleContextRestored() {
+  rendererUnavailable = false;
+  syncPlayback();
+}
+
+function destroyRenderer() {
+  stopAnimation();
+  if (gl && positionBuffer) gl.deleteBuffer(positionBuffer);
+  if (gl && program) gl.deleteProgram(program);
+  gl?.getExtension("WEBGL_lose_context")?.loseContext();
+  gl = null;
+  program = null;
+  positionBuffer = null;
+  uniforms = null;
+}
+
 onMounted(() => {
+  const canvas = canvasRef.value;
   motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-  motionQuery.addEventListener?.("change", syncPlayback);
+  if (motionQuery.addEventListener) motionQuery.addEventListener("change", syncPlayback);
+  else motionQuery.addListener?.(syncPlayback);
   themeObserver = new MutationObserver(syncPlayback);
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(handleResize);
+  if (canvas) {
+    canvas.addEventListener("webglcontextlost", handleContextLost);
+    canvas.addEventListener("webglcontextrestored", handleContextRestored);
+  }
+  if (hostRef.value) resizeObserver?.observe(hostRef.value);
   window.addEventListener("resize", handleResize, { passive: true });
   document.addEventListener("visibilitychange", handleVisibilityChange);
   syncPlayback();
 });
 
 onBeforeUnmount(() => {
-  stopAnimation();
-  motionQuery?.removeEventListener?.("change", syncPlayback);
+  const canvas = canvasRef.value;
+  if (motionQuery?.removeEventListener) motionQuery.removeEventListener("change", syncPlayback);
+  else motionQuery?.removeListener?.(syncPlayback);
   themeObserver?.disconnect();
+  resizeObserver?.disconnect();
   window.removeEventListener("resize", handleResize);
   document.removeEventListener("visibilitychange", handleVisibilityChange);
+  canvas?.removeEventListener("webglcontextlost", handleContextLost);
+  canvas?.removeEventListener("webglcontextrestored", handleContextRestored);
+  destroyRenderer();
 });
 </script>

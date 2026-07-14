@@ -21,10 +21,10 @@ provide("closePrivacy", closePrivacy);
 <template>
   <div class="relative isolate min-h-dvh">
     <SpotlightBackground />
-    <div class="relative">
+    <div class="relative z-[2]">
       <RouterView />
+      <FooterView class="relative" contact-email="aliya@nbcnm.cn" @open-privacy="openPrivacy" />
     </div>
     <PrivacyModal v-model:open="privacyOpen" contact-email="aliya@nbcnm.cn" />
-    <FooterView class="relative" contact-email="aliya@nbcnm.cn" @open-privacy="openPrivacy" />
   </div>
 </template>
