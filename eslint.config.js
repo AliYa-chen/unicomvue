@@ -13,6 +13,8 @@ export default defineConfig([
   globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**']),
 
   {
+    name: 'app/browser-globals',
+    files: ['src/**/*.{vue,js,mjs,jsx}'],
     languageOptions: {
       globals: {
         ...globals.browser,
@@ -23,8 +25,31 @@ export default defineConfig([
     },
   },
 
+  {
+    name: 'app/node-globals',
+    files: ['*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+
   js.configs.recommended,
-  ...pluginVue.configs['flat/essential'],
+  ...pluginVue.configs['flat/recommended'],
+
+  {
+    name: 'app/vue-template-formatting',
+    rules: {
+      // Keep ESLint focused on correctness; the project does not use a template formatter.
+      'vue/attributes-order': 'off',
+      'vue/first-attribute-linebreak': 'off',
+      'vue/html-closing-bracket-newline': 'off',
+      'vue/html-indent': 'off',
+      'vue/html-self-closing': 'off',
+      'vue/max-attributes-per-line': 'off',
+      'vue/multiline-html-element-content-newline': 'off',
+      'vue/singleline-html-element-content-newline': 'off',
+    },
+  },
 
   ...pluginOxlint.configs['flat/recommended'],
 ])

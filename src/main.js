@@ -1,36 +1,9 @@
 import './assets/main.css'
 
 import { createApp } from 'vue'
-import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
-
-function installViewportGuards() {
-  if (window.__VIEWPORT_GUARDS_INSTALLED__) return
-  window.__VIEWPORT_GUARDS_INSTALLED__ = true
-
-  const preventDefault = (event) => event.preventDefault()
-  const preventMultiTouch = (event) => {
-    if (event.touches.length > 1) event.preventDefault()
-  }
-  const preventZoomWheel = (event) => {
-    if (event.ctrlKey) event.preventDefault()
-  }
-  const preventZoomShortcut = (event) => {
-    const isZoomKey = ['+', '-', '=', '0'].includes(event.key)
-    if ((event.ctrlKey || event.metaKey) && isZoomKey) event.preventDefault()
-  }
-
-  document.addEventListener('gesturestart', preventDefault, { passive: false })
-  document.addEventListener('gesturechange', preventDefault, { passive: false })
-  document.addEventListener('gestureend', preventDefault, { passive: false })
-  document.addEventListener('touchmove', preventMultiTouch, { passive: false })
-  document.addEventListener('wheel', preventZoomWheel, { passive: false })
-  document.addEventListener('keydown', preventZoomShortcut)
-}
-
-installViewportGuards()
 
 function installWatermarkGuard() {
   if (window.__SITE_WATERMARK_GUARD_INSTALLED__) return
@@ -138,7 +111,6 @@ function installWatermarkGuard() {
 
 const app = createApp(App)
 
-app.use(createPinia())
 app.use(router)
 
 app.mount('#app')

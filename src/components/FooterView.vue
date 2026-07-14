@@ -122,7 +122,7 @@
                    text-zinc-700 underline underline-offset-4 decoration-zinc-300
                    hover:decoration-zinc-500
                    dark:text-zinc-300 dark:decoration-zinc-600 dark:hover:decoration-zinc-400"
-            @click="$emit('open-privacy')"
+            @click="emitOpenPrivacy"
           >
             隐私 / 说明
           </button>
@@ -146,7 +146,11 @@ import { APP_BRANCH, APP_COMMIT } from "@/env";
 defineProps({
   contactEmail: { type: String, default: "aliya@nbcnm.cn" },
 });
-defineEmits(["open-privacy"]);
+const emit = defineEmits(["open-privacy"]);
+
+function emitOpenPrivacy() {
+  emit("open-privacy");
+}
 
 const year = new Date().getFullYear();
 

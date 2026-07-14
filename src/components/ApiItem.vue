@@ -6,7 +6,7 @@
         class="text-xs font-medium text-indigo-600 underline-offset-4 hover:underline dark:text-indigo-400"
         :href="url"
         target="_blank"
-        rel="noreferrer"
+        rel="noopener noreferrer"
       >
         打开
       </a>

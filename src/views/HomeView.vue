@@ -266,21 +266,63 @@
         </div>
       </div>
 
-      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" v-html="cardsHtml"></div>
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <UsageCard
+          v-for="card in primaryUsageCards"
+          :key="card.id"
+          :card="card"
+        />
+
+        <UsageCard
+          v-if="limitedFlowCards.length === 1"
+          :card="limitedFlowCards[0]"
+        />
+
+        <section v-else-if="limitedFlowCards.length > 1" class="col-span-full" aria-labelledby="limited-flow-heading">
+          <div class="mb-3 flex items-center justify-between">
+            <h2 id="limited-flow-heading" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              其他流量包 ({{ limitedFlowCards.length }})
+            </h2>
+            <button
+              type="button"
+              class="text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              :aria-expanded="limitedFlowExpanded"
+              aria-controls="limited-flow-cards"
+              @click="limitedFlowExpanded = !limitedFlowExpanded"
+            >
+              {{ limitedFlowExpanded ? "收起" : "展开" }}
+            </button>
+          </div>
+          <div id="limited-flow-cards" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <UsageCard
+              v-for="(card, index) in limitedFlowCards"
+              v-show="limitedFlowExpanded || index === 0"
+              :key="card.id"
+              :card="card"
+            />
+          </div>
+        </section>
+      </div>
 
       <div class="rounded-2xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-600 hover:shadow-sm dark:border-[#8e96aa40] dark:bg-[#1b1b1f95] dark:text-zinc-400" v-show="showEmpty">
         暂无可展示的数据
       </div>
     </div>
     
-    <div class="fixed inset-0 z-[80]" v-show="loginModal">
+    <Teleport to="body">
+    <div v-show="loginModal" class="fixed inset-0 z-[80]">
       <button v-if="canCloseLogin" type="button" class="absolute inset-0 cursor-default bg-zinc-900/50 dark:bg-black/80" aria-label="关闭登录窗口" @click="hideLogin"></button>
       <div v-else class="absolute inset-0 bg-zinc-900/50 dark:bg-black/80"></div>
       <div class="relative mx-auto mt-24 w-[92vw] max-w-md">
-        <div class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+        <div
+          class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="login-dialog-title"
+        >
           <div class="flex items-start justify-between gap-3">
             <div>
-              <div class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">{{ canCloseLogin ? "添加账号" : "登录" }}</div>
+              <div id="login-dialog-title" class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">{{ canCloseLogin ? "添加账号" : "登录" }}</div>
               <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">账号只保存在当前浏览器</div>
             </div>
             <button v-if="canCloseLogin" type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700" title="关闭" aria-label="关闭登录窗口" @click="hideLogin"><X :size="18" /></button>
@@ -346,9 +388,10 @@
         </div>
       </div>
     </div>
+    </Teleport>
 
     <Transition enter-active-class="transition duration-200" enter-from-class="translate-y-2 opacity-0" leave-active-class="transition duration-150" leave-to-class="translate-y-2 opacity-0">
-      <div v-if="toastMessage" class="fixed inset-x-4 bottom-6 z-[70] flex justify-center pointer-events-none">
+      <div v-if="toastMessage" class="fixed inset-x-4 bottom-6 z-[70] flex justify-center pointer-events-none" role="status" aria-live="polite">
         <div class="flex max-w-md items-center gap-2 rounded-lg bg-zinc-900 px-4 py-3 text-sm font-medium text-white shadow-xl dark:bg-zinc-100 dark:text-zinc-900">
           <Check v-if="toastKind === 'ok'" :size="17" class="shrink-0 text-emerald-400 dark:text-emerald-600" />
           <Download v-else-if="toastKind === 'download'" :size="17" class="shrink-0" />
@@ -383,6 +426,7 @@ import {
   X,
 } from "@lucide/vue";
 import { toBlob } from "html-to-image";
+import UsageCard from "@/components/UsageCard.vue";
 
 // ========= 配置 =========
 const MAIN_API = "https://networkapi.2t.hk";
@@ -412,7 +456,8 @@ const lastAt = ref("—");
 const intervalText = ref("—");
 const signedRate = ref("—");
 const qciLevel = ref("—");
-const cardsHtml = ref("");
+const usageCards = ref([]);
+const limitedFlowExpanded = ref(false);
 const showEmpty = ref(false);
 const paused = ref(false);
 let timer = null;
@@ -465,6 +510,7 @@ const loginMsgKind = ref("error");
 
 const smsLoading = ref(false);
 const smsCountdown = ref(0);
+let smsCountdownTimer = null;
 const codeInputRef = ref(null); // ✅ 自动聚焦的 ref 引用
 const currentAppId = ref("");
 const currentDeviceId = ref("");
@@ -475,6 +521,13 @@ const isValidPhone = computed(() => /^1\d{10}$/.test(loginPhone.value));
 const currentAccount = computed(() => accounts.value.find((account) => account.id === activeAccountId.value) || null);
 const currentAccountLabel = computed(() => currentAccount.value ? accountDisplayName(currentAccount.value) : "");
 const canCloseLogin = computed(() => accounts.value.length > 0);
+const primaryUsageCards = computed(() => [
+  ...usageCards.value.filter((card) => card.kind !== "flow"),
+  ...usageCards.value.filter((card) => card.kind === "flow" && card.unlimited),
+]);
+const limitedFlowCards = computed(() => (
+  usageCards.value.filter((card) => card.kind === "flow" && !card.unlimited)
+));
 
 const dotClass = computed(() => {
   if (dotKind.value === "ok") return "h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-emerald-500/50";
@@ -489,7 +542,6 @@ function setLastAtNow() { const d = new Date(); lastAt.value = `${pad(d.getHours
 function setIntervalText() { intervalText.value = `${Math.round(INTERVAL_MS / 1000)}s`; }
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function looksLikeHtml(t) { return (t||"").trim().slice(0, 200).toLowerCase().startsWith("<"); }
-function escapeHtml(s) { return String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"); }
 function toNum(v) { const n = Number(String(v ?? "").trim()); return Number.isFinite(n) ? n : null; }
 function formatRateMbps(v) { if (v === "LTE") return "LTE"; const n = toNum(v); return (n === null || n <= 0) ? "—" : `${Math.round(n)}Mbps`; }
 function formatQciNum(v) { const n = toNum(v); return n === null ? "—" : `${Math.round(n)}`; }
@@ -519,7 +571,8 @@ function showToast(message, kind = "ok") {
 
 function resetDashboard() {
   packageName.value = "";
-  cardsHtml.value = "";
+  usageCards.value = [];
+  limitedFlowExpanded.value = false;
   showEmpty.value = false;
   lastAt.value = "—";
   signedRate.value = "—";
@@ -694,11 +747,6 @@ function handleCommonErrors(json, httpStatus, requestToken = "") {
   return false;
 }
 
-// Icons
-const ICON_PHONE = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="text-zinc-600 dark:text-zinc-400"><path d="M6.5 3.5l3 2.2c.6.4.8 1.2.4 1.8l-1.2 1.8c-.2.3-.2.7-.1 1.1.8 2.1 2.5 3.8 4.6 4.6.4.1.8.1 1.1-.1l1.8-1.2c.6-.4 1.4-.2 1.8.4l2.2 3c.4.6.3 1.4-.2 1.9l-1.4 1.4c-.6.6-1.5.9-2.4.8-7.1-.8-12.8-6.5-13.6-13.6-.1-.9.2-1.8.8-2.4L4.6 3.7c.5-.5 1.3-.6 1.9-.2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const ICON_DATA = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="text-zinc-600 dark:text-zinc-400"><path d="M4 7h16M6 11h12M8 15h8M10 19h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
-const ICON_SMS = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="text-zinc-600 dark:text-zinc-400"><path d="M7 8h10M7 12h6M21 12c0 4.418-4.03 8-9 8a10.5 10.5 0 0 1-3.1-.46L3 20l1.2-3.2A7.4 7.4 0 0 1 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-
 function pickByIndex(arr, idx) { return Array.isArray(arr) && arr.length > idx ? arr[idx] : null; }
 function normalizeDetails(arr) { return Array.isArray(arr) ? arr.filter(Boolean) : []; }
 function detailKey(d) { return d?.feePolicyId ? `feePolicyId:${d.feePolicyId}` : `mix:${d?.addupItemCode}|${d?.feePolicyName}|${d?.endDate}|${d?.flowType}|${d?.total}`; }
@@ -725,13 +773,13 @@ function buildCardsFromOcs(json) {
   if (voiceRes) {
     const { used, remain, total } = getAgg(voiceRes);
     const percent = total > 0 ? clamp((used / total) * 100, 0, 100) : null;
-    cards.push({ kind: "voice", title: "语音", subtitle: "（已用）", mainValue: formatMinutes(used), smallTotal: `总：${formatMinutes(total)}`, unlimited: false, percent, canUseText: `剩：${formatMinutes(remain)}` });
+    cards.push({ id: "voice", kind: "voice", title: "语音", subtitle: "（已用）", mainValue: formatMinutes(used), smallTotal: `总：${formatMinutes(total)}`, unlimited: false, percent, canUseText: `剩：${formatMinutes(remain)}` });
   }
 
   if (smsRes) {
     const { used, remain, total } = getAgg(smsRes);
     const percent = total > 0 ? clamp((used / total) * 100, 0, 100) : null;
-    cards.push({ kind: "sms", title: "短信", subtitle: "（已用）", mainValue: `${Math.round(used)}条`, smallTotal: `总：${Math.round(total)}`, unlimited: false, percent, canUseText: `剩：${Math.round(remain)}` });
+    cards.push({ id: "sms", kind: "sms", title: "短信", subtitle: "（已用）", mainValue: `${Math.round(used)}条`, smallTotal: `总：${Math.round(total)}`, unlimited: false, percent, canUseText: `剩：${Math.round(remain)}` });
   }
 
   if (flowRes) {
@@ -743,13 +791,13 @@ function buildCardsFromOcs(json) {
       const meta = flowTypeMeta(ft, unlimited), share = unlimited ? shareMeta(d?.typemark) : null;
       
       const badges = [
-        meta?.label ? { text: meta.label, cls: meta.badge } : null,
-        share ? { text: share.label, cls: share.badge } : null,
-        { text: unlimited ? "无限量" : "有上限", cls: unlimited ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800" : "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700" }
+        meta?.label ? { key: "flow-type", text: meta.label, cls: meta.badge } : null,
+        share ? { key: "sharing", text: share.label, cls: share.badge } : null,
+        { key: "limit", text: unlimited ? "无限量" : "有上限", cls: unlimited ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800" : "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700" }
       ].filter(Boolean);
 
       cards.push({
-        kind: "flow", title: d?.feePolicyName?.trim() || flowTypeLabel(ft), mainValue: formatFlowFromMB(use),
+        id: `flow:${detailKey(d)}`, kind: "flow", title: d?.feePolicyName?.trim() || flowTypeLabel(ft), mainValue: formatFlowFromMB(use),
         smallTotal: unlimited ? "总量：∞" : (total !== null ? `总：${formatFlowFromMB(total)}` : "总量：—"),
         unlimited, percent, canUseText: unlimited ? "" : `剩：${remain === null ? "—" : formatFlowFromMB(remain)}`, hideCanUseLine: unlimited,
         badges, flowTypeRank: flowTypeRank(ft), flowLimitedKey: unlimited ? 0 : 1
@@ -764,77 +812,14 @@ function buildCardsFromOcs(json) {
   });
 }
 
-// ✅ 格式化后的渲染代码，并且修正了 ICON
-function makeOcsCard(card) {
-  const unlimited = !!card.unlimited, percent = unlimited ? 100 : card.percent;
-  const barClass = unlimited ? "rainbow-bar" : "bg-zinc-900 dark:bg-zinc-100";
-  const bgBarClass = "bg-zinc-100 dark:bg-zinc-800";
-  // ✅ 修正：短信使用 ICON_SMS
-  const iconSvg = card.kind === "voice" ? ICON_PHONE : card.kind === "sms" ? ICON_SMS : ICON_DATA;
-  
-  const badgesHtml = card.kind === "flow" && card.badges?.length ? 
-    `<div class="mt-2 flex flex-wrap gap-1.5">${card.badges.map(b=>`<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${escapeHtml(b.cls)}">${escapeHtml(b.text)}</span>`).join("")}</div>` : "";
-
-  const unlimitedBadge = unlimited ? 
-    `<div class="absolute -right-2 -top-2 inline-flex h-7 min-w-[28px] items-center justify-center rounded-full bg-zinc-900 px-2 text-xs font-semibold text-white hover:shadow-sm dark:bg-zinc-100 dark:text-zinc-900">∞</div>` : "";
-
-  return `
-    <div class="min-w-0 rounded-2xl border border-zinc-200 bg-white p-5 hover:shadow-sm flex h-full flex-col dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]">
-      <div class="flex min-w-0 items-start justify-between gap-4">
-        <div class="min-w-0 flex-1 [overflow-wrap:anywhere]">
-          <div class="min-w-0 text-sm font-medium text-zinc-700 truncate whitespace-nowrap dark:text-zinc-300">${escapeHtml(card.title)} ${escapeHtml(card.subtitle||"")}</div>
-          <div class="mt-2 text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">${escapeHtml(card.mainValue)}</div>
-          <div class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">${escapeHtml(card.smallTotal||"")}</div>
-          <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400 ${card.hideCanUseLine ? "invisible" : ""}">${escapeHtml(card.canUseText||"")}</div>
-          ${badgesHtml}
-        </div>
-        <div class="relative shrink-0">
-          <div class="rounded-2xl bg-zinc-100 p-3 dark:bg-zinc-800">${iconSvg}</div>
-          ${unlimitedBadge}
-        </div>
-      </div>
-      <div class="mt-auto pt-5">
-        <div class="mb-2 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
-          <span>总量</span>
-          <span>${unlimited ? "无限量" : percent === null ? "—" : percent.toFixed(2) + "%"}</span>
-        </div>
-        <div class="h-2 w-full overflow-hidden rounded-full ${bgBarClass}">
-          <div class="h-full rounded-full ${barClass}" style="width:${unlimited ? '100%' : (percent || 0) + '%'};"></div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
 function renderFromOcs(json, accountToken) {
   if (json?.code && String(json.code) !== "0000") throw new Error(`Code ${json.code}`);
   packageName.value = String(json?.packageName || json?.result?.packageName || "").trim();
   updateAccountPackageName(accountToken, packageName.value);
   const cards = buildCardsFromOcs(json);
-  if (!cards.length) { showEmpty.value = true; cardsHtml.value = ""; return; }
-  showEmpty.value = false;
-  
-  const unl = cards.filter(c => c.kind==="flow" && c.unlimited);
-  const lim = cards.filter(c => c.kind==="flow" && !c.unlimited);
-  const oth = cards.filter(c => c.kind!=="flow");
-  
-  let html = [...oth, ...unl].map(makeOcsCard).join("");
-  if (lim.length === 1) {
-    html += makeOcsCard(lim[0]);
-  } else if (lim.length > 1) {
-    html += `
-      <div class="col-span-full" data-flow-wrapper="1">
-        <div class="mb-3 flex items-center justify-between">
-          <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300">其他流量包 (${lim.length})</div>
-          <button type="button" data-flow-group-toggle="1" aria-expanded="false" class="text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200">展开</button>
-        </div>
-        <div data-flow-group="1" data-collapsed="1">
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 flow-group-grid">${lim.map(makeOcsCard).join("")}</div>
-        </div>
-      </div>
-    `;
-  }
-  cardsHtml.value = html;
+  usageCards.value = cards;
+  limitedFlowExpanded.value = false;
+  showEmpty.value = cards.length === 0;
 }
 
 // ========= API Functions =========
@@ -955,25 +940,35 @@ function ensureLoginIdentity() {
 }
 
 function startSmsCountdown() {
+  stopSmsCountdown();
   smsCountdown.value = 60;
-  const t = setInterval(() => {
+  smsCountdownTimer = setInterval(() => {
     smsCountdown.value--;
-    if (smsCountdown.value <= 0) clearInterval(t);
+    if (smsCountdown.value <= 0) stopSmsCountdown();
   }, 1000);
 }
 
+function stopSmsCountdown() {
+  if (smsCountdownTimer) clearInterval(smsCountdownTimer);
+  smsCountdownTimer = null;
+}
+
 function loadScript() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (window.TencentCaptcha) return resolve();
     const s = document.createElement('script');
     s.src = 'https://turing.captcha.qcloud.com/TJCaptcha.js';
     s.onload = resolve;
+    s.onerror = () => {
+      s.remove();
+      reject(new Error("验证码组件加载失败"));
+    };
     document.head.appendChild(s);
   });
 }
 
 async function handleSendCode(resultToken = "") {
-  if (!isValidPhone.value) return;
+  if (!isValidPhone.value || smsLoading.value) return;
   
   // ✅ 成功后保存手机号到历史记录
   localStorage.setItem(PHONE_HISTORY_KEY, loginPhone.value);
@@ -1066,7 +1061,7 @@ async function startCaptcha(mobileHex) {
 }
 
 async function doLogin() { 
-  if (!isValidPhone.value || !loginCode.value) return; 
+  if (!isValidPhone.value || !loginCode.value || loginLoading.value) return;
   loginLoading.value = true; 
   try { 
     // 保存成功的手机号
@@ -1173,7 +1168,10 @@ function removeCurrentAccount() {
   }
 }
 function startTimer() { stopTimer(); timer = setInterval(() => { if (!paused.value) fetchData(); }, INTERVAL_MS); }
-function stopTimer() { clearInterval(timer); }
+function stopTimer() {
+  if (timer) clearInterval(timer);
+  timer = null;
+}
 function togglePause() {
   paused.value = !paused.value;
   closeActionMenus();
@@ -1324,20 +1322,6 @@ onMounted(() => {
   document.addEventListener("pointerdown", onDocumentPointerDown);
   document.addEventListener("keydown", onDocumentKeydown);
   
-  if (!window.__FLOW_GROUP_BINDED__) {
-    window.__FLOW_GROUP_BINDED__ = true;
-    document.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-flow-group-toggle='1']");
-      if (btn) {
-        const group = btn.closest("[data-flow-wrapper='1']")?.querySelector("[data-flow-group='1']");
-        if(group) {
-          const c = group.getAttribute("data-collapsed") === "1";
-          group.setAttribute("data-collapsed", c ? "0" : "1");
-          btn.innerText = c ? "收起" : "展开";
-        }
-      }
-    });
-  }
   setIntervalText();
   if (!getEcsToken()) { setStatus("未登录", "info"); showLogin(); } else { fetchData(); }
   startTimer();
@@ -1345,6 +1329,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopTimer();
+  stopSmsCountdown();
   activeFetchController?.abort();
   clearTimeout(toastTimer);
   document.removeEventListener("pointerdown", onDocumentPointerDown);

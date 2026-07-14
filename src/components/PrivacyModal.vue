@@ -1,18 +1,25 @@
 <template>
+  <Teleport to="body">
     <div v-show="open" class="fixed inset-0 z-111">
         <!-- overlay -->
-        <div class="absolute inset-0 bg-zinc-900/50 backdrop-blur-[1px] dark:bg-black/80" @click="emitClose"></div>
+        <div class="absolute inset-0 bg-zinc-900/50 backdrop-blur-[1px] dark:bg-black/80" aria-hidden="true" @click="emitClose"></div>
 
         <!-- panel wrapper (center) -->
         <div class="relative flex min-h-full items-center justify-center p-4 sm:p-6">
             <!-- panel -->
-            <div class="w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
-                role="dialog" aria-modal="true">
+            <div
+                ref="dialogRef"
+                class="w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl outline-none dark:border-zinc-800 dark:bg-zinc-900"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="privacy-dialog-title"
+                tabindex="-1"
+            >
                 <!-- header -->
                 <div
                     class="flex items-start justify-between gap-3 border-b border-zinc-100 p-5 sm:p-6 dark:border-zinc-800">
                     <div class="min-w-0">
-                        <div class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+                        <div id="privacy-dialog-title" class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
                             隐私 / Cookie / Token 说明
                         </div>
                         <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
@@ -115,10 +122,11 @@
             </div>
         </div>
     </div>
+  </Teleport>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ApiItem from "@/components/ApiItem.vue";
 
 const props = defineProps({
@@ -127,28 +135,90 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:open"]);
+const dialogRef = ref(null);
+const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), [tabindex]:not([tabindex='-1'])";
+let previousBodyOverflow = null;
+let previouslyFocusedElement = null;
 
 function emitClose() {
     emit("update:open", false);
 }
 
-function onKeydown(e) {
-    if (e.key === "Escape") emitClose();
+function trapFocus(event) {
+    const dialog = dialogRef.value;
+    if (!dialog) return;
+    const focusable = Array.from(dialog.querySelectorAll(FOCUSABLE_SELECTOR))
+        .filter((element) => element.getClientRects().length > 0);
+    if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const activeElement = document.activeElement;
+    if (!dialog.contains(activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && (activeElement === first || activeElement === dialog)) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+function onDocumentKeydown(event) {
+    if (!props.open) return;
+    if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        emitClose();
+    } else if (event.key === "Tab") {
+        trapFocus(event);
+    }
 }
 
 function lockBodyScroll(locked) {
-    document.body.style.overflow = locked ? "hidden" : "";
+    if (locked) {
+        if (previousBodyOverflow === null) previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+    } else if (previousBodyOverflow !== null) {
+        document.body.style.overflow = previousBodyOverflow;
+        previousBodyOverflow = null;
+    }
+}
+
+async function handleOpenChange(open) {
+    if (open) {
+        previouslyFocusedElement = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        lockBodyScroll(true);
+        await nextTick();
+        if (props.open) dialogRef.value?.focus();
+        return;
+    }
+
+    lockBodyScroll(false);
+    const focusTarget = previouslyFocusedElement;
+    previouslyFocusedElement = null;
+    await nextTick();
+    if (!props.open && focusTarget?.isConnected) focusTarget.focus();
 }
 
 watch(
     () => props.open,
-    (v) => lockBodyScroll(!!v),
-    { immediate: true }
+    handleOpenChange,
+    { immediate: true, flush: "post" }
 );
 
-onMounted(() => document.addEventListener("keydown", onKeydown));
+onMounted(() => document.addEventListener("keydown", onDocumentKeydown, true));
 onBeforeUnmount(() => {
-    document.removeEventListener("keydown", onKeydown);
+    document.removeEventListener("keydown", onDocumentKeydown, true);
     lockBodyScroll(false);
+    previouslyFocusedElement = null;
 });
 </script>
