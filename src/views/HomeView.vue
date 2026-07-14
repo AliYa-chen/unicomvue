@@ -193,6 +193,8 @@ import { computed, onMounted, onBeforeUnmount, ref, inject, nextTick } from "vue
 const MAIN_API = "https://networkapi.2t.hk";
 const STORAGE_KEY = "ecs_token";
 const PHONE_HISTORY_KEY = "last_used_phone"; // ✅ 新增本地记忆手机号
+const APP_ID_STORAGE_KEY = "unicom_app_id";
+const DEVICE_ID_STORAGE_KEY = "unicom_device_id";
 const THEME_KEY = "theme"; 
 const LOGIN_API = MAIN_API + "/gettoken/"; 
 const OCS_API = MAIN_API + "/ocs_proxy/";
@@ -252,7 +254,8 @@ const loginMsgKind = ref("error");
 const smsLoading = ref(false);
 const smsCountdown = ref(0);
 const codeInputRef = ref(null); // ✅ 自动聚焦的 ref 引用
-const currentAppId = ref("");   // ✅ 规范化为 Vue Ref
+const currentAppId = ref("");
+const currentDeviceId = ref("");
 
 const isValidPhone = computed(() => /^1\d{10}$/.test(loginPhone.value));
 
@@ -490,7 +493,9 @@ async function fetchBasicDataAndRenderRate() {
       if (basicIsLte.value) { signedRate.value = "LTE"; return; }
       signedRate.value = "—";
     }
-  } catch {}
+  } catch {
+    // Secondary rate data is optional.
+  }
 }
 
 async function fetchQciAndRender() { 
@@ -506,7 +511,9 @@ async function fetchQciAndRender() {
       maxNetMbps.value = (typeof j?.max_net_mbps === "number" && j.max_net_mbps > 0) ? j.max_net_mbps : null;
       if (basicIsLte.value && maxNetMbps.value) signedRate.value = formatRateMbps(maxNetMbps.value);
     }
-  } catch {}
+  } catch {
+    // Secondary QCI data is optional.
+  }
 }
 
 // ========= ⚡⚡ 短信发送与登录核心逻辑 ⚡⚡ =========
@@ -517,6 +524,33 @@ function generateAppId() {
          rnd() + "912d306b5053abf90c7ebbb695887bc" +
          "870ae0706d573c348539c26c5c0a878641fcc0d3e90acb9be1e6ef858a" +
          "59af546f3c826988332376b7d18c8ea2398ee3a9c3db947e2471d32a49612";
+}
+
+function generateDeviceId() {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function ensureLoginIdentity() {
+  let appId = localStorage.getItem(APP_ID_STORAGE_KEY) || "";
+  if (!/^[a-zA-Z0-9]{64,256}$/.test(appId)) {
+    appId = generateAppId();
+    localStorage.setItem(APP_ID_STORAGE_KEY, appId);
+  }
+
+  let deviceId = localStorage.getItem(DEVICE_ID_STORAGE_KEY) || "";
+  if (!/^[a-f0-9]{32}$/.test(deviceId)) {
+    deviceId = generateDeviceId();
+    localStorage.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
+  }
+
+  currentAppId.value = appId;
+  currentDeviceId.value = deviceId;
 }
 
 function startSmsCountdown() {
@@ -545,7 +579,7 @@ async function handleSendCode(resultToken = "") {
   
   smsLoading.value = true;
   loginMsg.value = "";
-  if (!currentAppId.value) currentAppId.value = generateAppId();
+  ensureLoginIdentity();
 
   try {
     const r = await fetch(`${LOGIN_API}?action=send`, {
@@ -554,6 +588,7 @@ async function handleSendCode(resultToken = "") {
       body: JSON.stringify({ 
         phone: loginPhone.value, 
         appid: currentAppId.value, 
+        deviceId: currentDeviceId.value,
         resultToken 
       })
     });
@@ -604,7 +639,8 @@ async function startCaptcha(mobileHex) {
           body: JSON.stringify({
             ticket: res.ticket, randstr: res.randstr,
             mobile: mobileHex, phone: loginPhone.value,
-            appid: currentAppId.value
+            appid: currentAppId.value,
+            deviceId: currentDeviceId.value
           })
         });
         const vd = await vr.json();
@@ -634,6 +670,7 @@ async function doLogin() {
   try { 
     // 保存成功的手机号
     localStorage.setItem(PHONE_HISTORY_KEY, loginPhone.value);
+    ensureLoginIdentity();
 
     const r = await fetch(`${LOGIN_API}?action=login`, { 
       method: "POST", 
@@ -641,7 +678,8 @@ async function doLogin() {
       body: JSON.stringify({ 
         phone: loginPhone.value, 
         code: loginCode.value,
-        appid: currentAppId.value || generateAppId() 
+        appid: currentAppId.value,
+        deviceId: currentDeviceId.value
       }) 
     }); 
     const d = await r.json(); 
@@ -667,7 +705,7 @@ async function doLogin() {
 // Controls
 function showLogin() { 
   loginModal.value = true; 
-  currentAppId.value = ""; // 打开弹窗时重置 appId
+  ensureLoginIdentity();
 }
 function hideLogin() { loginModal.value = false; }
 function switchLoginMode(m) { loginMode.value = m; loginMsg.value = ""; }
@@ -676,7 +714,7 @@ function applyTokenLogin() { if (loginToken.value.length > 20) { setEcsToken(log
 function startTimer() { stopTimer(); timer = setInterval(() => { if (!paused.value) fetchData(); }, INTERVAL_MS); }
 function stopTimer() { clearInterval(timer); }
 function togglePause() { paused.value = !paused.value; }
-async function copyEcsToken() { try { await navigator.clipboard.writeText(getEcsToken()); setStatus("Token复制成功", "ok"); } catch {} }
+async function copyEcsToken() { try { await navigator.clipboard.writeText(getEcsToken()); setStatus("Token复制成功", "ok"); } catch { /* Clipboard access can be unavailable. */ } }
 
 // Lifecycle
 onMounted(() => {

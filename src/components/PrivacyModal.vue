@@ -41,9 +41,10 @@
                                 </p>
 
                                 <ul class="list-disc space-y-1 pl-5 leading-relaxed">
-                                    <li>本项目 <span class="font-semibold">不会存储</span> 您的手机号、验证码或 <span
+                                    <li>本项目服务端 <span class="font-semibold">不会持久化存储</span> 您的手机号、验证码或 <span
                                             class="font-mono">ecs_token</span></li>
                                     <li><span class="font-mono">ecs_token</span> 仅保存在浏览器本地缓存（LocalStorage），用于免重复登录</li>
+                                    <li><span class="font-mono">appid</span> 与设备标识仅保存在浏览器本地，用于在登录流程中保持设备身份一致</li>
                                     <li>你可随时点击【退出】清除本地 <span class="font-mono">ecs_token</span></li>
                                     <li>本页面不需要第三方 Cookie</li>
                                 </ul>
