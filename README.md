@@ -6,7 +6,7 @@
 - [下载预构建静态文件](https://aliya-chen.github.io/unicomvue/dist.zip)
 - [提交问题或建议](https://github.com/AliYa-chen/unicomvue/issues)
 
-> 本项目是非官方查询工具，仅供用户查询本人账号。请遵守运营商服务规则，不要进行批量请求、接口滥用或商业化调用。
+> 本服务独立提供联通账号信息查询与展示，不代表运营商官方业务办理渠道。用户应仅查询本人或已获合法授权的账号，并遵守运营商服务规则；查询结果以中国联通官方系统和正式账单为准。
 
 ## 功能
 
@@ -29,9 +29,9 @@
 - pnpm
 - Node.js 原生测试运行器、ESLint 与 Oxlint
 
-## 接口与隐私边界
+## 接口、隐私与免责声明
 
-本仓库只包含浏览器前端，不包含 API 网关或运营商上游服务的后端源码。前端通过公开网关契约完成登录和查询，并在需要安全验证时按需加载腾讯云验证码组件。
+本项目提供基于 Vue 3 的浏览器前端，服务端为账号登录、安全验证和信息查询提供支持。前端通过公开 API 完成登录与查询，并在需要安全验证时按需加载腾讯云验证码组件；服务端技术与安全配置按内部规范管理。
 
 ```mermaid
 flowchart LR
@@ -40,14 +40,7 @@ flowchart LR
     B --> D["运营商上游服务"]
 ```
 
-完整接口清单、请求字段边界、数据流、Cookie 与 Token 说明统一维护在 [接口与隐私说明](./docs/api-and-privacy.md)。应用内的“隐私 / Cookie / Token 说明”模态框也直接使用这份 Markdown，避免文档与界面内容不一致。
-
-文档不会公开以下内容：
-
-- API 网关或上游服务的后端实现代码
-- 服务器内部路由映射、签名逻辑、固定凭证或部署配置
-- 真实手机号、短信验证码、Captcha Ticket、Token 或 Cookie
-- 可用于绕过安全验证或访问控制的请求样例
+完整接口清单、服务说明与免责声明、数据流、Cookie 与 Token 说明统一维护在 [接口、隐私与免责声明](./docs/api-and-privacy.md)。应用内的“隐私 / Cookie / Token 说明”模态框也直接使用这份 Markdown，避免文档与界面内容不一致。
 
 ## 本地开发
 
@@ -124,7 +117,7 @@ docker run --rm -p 8080:80 network-panel:local
 - 页面中保留指向本项目开源仓库的链接
 - 不用于商业用途、批量请求或接口滥用
 
-请通过 [GitHub Issues](https://github.com/AliYa-chen/unicomvue/issues) 或邮件联系项目维护者，是否加入白名单将根据实际情况评估。
+请通过 [GitHub Issues](https://github.com/AliYa-chen/unicomvue/issues) 联系项目维护者，是否加入白名单将根据实际情况评估。
 
 ### 可以增加新功能吗？
 
@@ -133,7 +126,6 @@ docker run --rm -p 8080:80 network-panel:local
 ## 联系方式
 
 - GitHub Issues：[AliYa-chen/unicomvue](https://github.com/AliYa-chen/unicomvue/issues)
-- 邮箱：[aliya@nbcnm.cn](mailto:aliya@nbcnm.cn)
 
 ## 许可证
 
