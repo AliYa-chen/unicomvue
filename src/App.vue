@@ -25,11 +25,15 @@ provide(themeInjectionKey, theme);
     :class="{ dark: isDark, 'h-dvh overflow-hidden': privacyOpen }"
   >
     <SpotlightBackground :active="isDark" />
-    <div class="relative z-[2]">
+    <div
+      class="relative z-[2]"
+      :inert="privacyOpen"
+      :aria-hidden="privacyOpen ? 'true' : undefined"
+    >
       <RouterView />
       <FooterView class="relative" contact-email="aliya@nbcnm.cn" @open-privacy="openPrivacy" />
     </div>
-    <PrivacyModal v-model:open="privacyOpen" contact-email="aliya@nbcnm.cn" />
+    <PrivacyModal v-model:open="privacyOpen" />
     <div class="screen-watermark" aria-hidden="true"></div>
   </div>
 </template>
