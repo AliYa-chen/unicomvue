@@ -22,7 +22,7 @@ provide(themeInjectionKey, theme);
 <template>
   <div
     class="app-shell relative isolate min-h-dvh bg-zinc-50 transition-colors duration-300 dark:bg-zinc-900"
-    :class="{ dark: isDark, 'h-dvh overflow-hidden': privacyOpen }"
+    :class="{ dark: isDark }"
   >
     <SpotlightBackground :active="isDark" />
     <div
@@ -33,6 +33,12 @@ provide(themeInjectionKey, theme);
       <RouterView />
       <FooterView class="relative" contact-email="aliya@nbcnm.cn" @open-privacy="openPrivacy" />
     </div>
+    <div
+      id="app-modal-root"
+      class="relative z-[110]"
+      :inert="privacyOpen || undefined"
+      :aria-hidden="privacyOpen ? 'true' : undefined"
+    ></div>
     <PrivacyModal v-model:open="privacyOpen" />
     <div class="screen-watermark" aria-hidden="true"></div>
   </div>

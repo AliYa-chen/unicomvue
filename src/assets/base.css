@@ -11,7 +11,7 @@
   overflow-x: hidden;
   overflow-x: clip;
   overscroll-behavior-x: none;
-  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   /* 在这里定义全局过渡，这就不用在每个 div 上写 transition 了 */

@@ -109,6 +109,7 @@
 import { nextTick, ref, shallowRef, useId, useTemplateRef, watch } from "vue";
 import { ShieldCheck, X } from "@lucide/vue";
 import privacyMarkdown from "../../docs/api-and-privacy.md?raw";
+import { useDocumentScrollLock } from "@/composables/useDocumentScrollLock";
 
 function extractDocumentTitle(source) {
   const heading = String(source).match(/^#\s+(.+)$/m);
@@ -180,6 +181,7 @@ function renderPrivacyDocument(source, MarkdownIt) {
 }
 
 const open = defineModel("open", { type: Boolean, default: false });
+useDocumentScrollLock(open);
 const dialogRef = useTemplateRef("dialogRef");
 const closeButtonRef = useTemplateRef("closeButtonRef");
 const confirmButtonRef = useTemplateRef("confirmButtonRef");
@@ -251,7 +253,7 @@ async function focusDialog(isOpen) {
   const focusTarget = previouslyFocusedElement;
   previouslyFocusedElement = null;
   await nextTick();
-  if (focusTarget?.isConnected) focusTarget.focus();
+  if (focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
 }
 
 watch(open, focusDialog, { immediate: true, flush: "post" });

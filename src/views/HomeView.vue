@@ -1,6 +1,8 @@
 <template>
   <div
-    class="min-h-screen text-zinc-900 transition-colors duration-300 dark:text-zinc-100"
+    class="min-h-dvh text-zinc-900 transition-colors duration-300 dark:text-zinc-100"
+    :inert="loginOpen || undefined"
+    :aria-hidden="loginOpen ? 'true' : undefined"
     @keydown.esc="handleEscape"
   >
     <header
@@ -53,6 +55,7 @@
 
           <div class="relative min-w-0">
             <button
+              ref="desktopAccountButtonRef"
               type="button"
               class="inline-flex h-10 max-w-44 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white/90 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 hover:shadow-sm active:scale-[0.98] dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-200 dark:hover:bg-zinc-800"
               title="切换账号"
@@ -103,7 +106,7 @@
         ></div>
 
         <section class="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6 dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]">
-          <div class="flex items-start justify-between gap-3">
+          <div class="flex flex-col items-stretch gap-3 min-[360px]:flex-row min-[360px]:items-start min-[360px]:justify-between">
             <div class="min-w-0">
               <h1 class="min-w-0 text-xl font-semibold tracking-tight sm:text-2xl">
                 <button
@@ -130,7 +133,7 @@
               </div>
             </div>
 
-            <div ref="moreMenuRef" class="relative flex shrink-0 items-center gap-2 lg:hidden">
+            <div ref="moreMenuRef" class="relative flex shrink-0 items-center justify-end gap-2 lg:hidden">
               <button
                 type="button"
                 class="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 text-sm font-medium text-white transition hover:bg-indigo-700 hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 dark:bg-indigo-500 dark:hover:bg-indigo-600"
@@ -144,6 +147,7 @@
               </button>
 
               <button
+                ref="mobileMoreButtonRef"
                 type="button"
                 class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-50 hover:shadow-sm active:scale-[0.98] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
                 title="更多操作"
@@ -223,6 +227,7 @@
       v-model:open="loginOpen"
       :can-close="hasAccounts"
       :notice="loginNotice"
+      :return-focus-target="loginReturnFocusTarget"
       @authenticated="handleAuthenticated"
       @open-privacy="openPrivacy"
     />
@@ -231,7 +236,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, useTemplateRef } from "vue";
+import { computed, nextTick, onMounted, ref, shallowRef, useTemplateRef } from "vue";
 import {
   Camera,
   ChevronDown,
@@ -265,6 +270,9 @@ const accountMenuOpen = ref(false);
 const captureTargetRef = useTemplateRef("captureTargetRef");
 const moreMenuRef = useTemplateRef("moreMenuRef");
 const downloadLinkRef = useTemplateRef("downloadLinkRef");
+const desktopAccountButtonRef = useTemplateRef("desktopAccountButtonRef");
+const mobileMoreButtonRef = useTemplateRef("mobileMoreButtonRef");
+const loginReturnFocusTarget = shallowRef(null);
 const { surfaceStyle: headerSurfaceStyle } = useHeaderScrollSurface();
 
 const accountStore = useAccounts();
@@ -281,6 +289,7 @@ const { openPrivacy } = usePrivacy();
 const { message: toastMessage, kind: toastKind, showToast } = useToast();
 
 function requireLogin(message = "") {
+  loginReturnFocusTarget.value = null;
   closeActionMenus();
   loginNotice.value = message;
   loginOpen.value = true;
@@ -347,8 +356,12 @@ function toggleAccountMenu() {
 }
 
 function showAddAccount() {
+  loginReturnFocusTarget.value = accountMenuOpen.value
+    ? desktopAccountButtonRef.value
+    : mobileMoreButtonRef.value;
   loginNotice.value = "";
-  requireLogin();
+  closeActionMenus();
+  loginOpen.value = true;
 }
 
 function handleAuthenticated(payload) {
