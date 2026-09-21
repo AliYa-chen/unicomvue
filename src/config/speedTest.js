@@ -1,14 +1,39 @@
 export const SPEED_TEST_NODE_GROUPS = Object.freeze([
   Object.freeze({
-    label: "运营商",
+    label: "国内 CDN",
     options: Object.freeze([
       Object.freeze({
-        label: "和彩云",
-        value: "https://img.mcloud.139.com/material_prod/material_media/20221128/1669626861087.png",
+        label: "npmmirror Electron",
+        value: "https://cdn.npmmirror.com/binaries/electron/37.2.6/electron-v37.2.6-win32-x64.zip",
       }),
       Object.freeze({
-        label: "天翼云桌面",
-        value: "https://desk.ctyun.cn:8999/desktop-prod/software/windows_tob_client/15/64/202030001/CtyunClouddeskUniversal_2.3.0_202030001_x86_20240327104015_Setup.exe",
+        label: "腾讯云 npm",
+        value: "https://mirrors.cloud.tencent.com/npm/@next/swc-linux-x64-gnu/-/swc-linux-x64-gnu-15.5.3.tgz",
+      }),
+      Object.freeze({
+        label: "阿里云 OSS",
+        value: "https://gosspublic.alicdn.com/ossbrowser/1.19.0/oss-browser-linux-x64.zip",
+      }),
+      Object.freeze({
+        label: "华为云 CDN",
+        value: "https://devcloud-res.hc-cdn.com/MirrorPortal-CDN/2026.8.3/hws/main.dd87a002313c9570.js",
+      })
+    ]),
+  }),
+  Object.freeze({
+    label: "国内静态资源（小文件）",
+    options: Object.freeze([
+      Object.freeze({
+        label: "Steam CDN",
+        value: "https://shared.cdn.queniuqe.com/store_item_assets/steam/spotlights/987505ca68d2cd4a5cb77137/8328b431f6e0a9ead92f202a074ce1ce7aee9ffb/vertical_capsule_english.png",
+      }),
+      Object.freeze({
+        label: "Microsoft CDN",
+        value: "https://cdn-dynmedia-1.microsoft.com/is/content/microsoftcorp/weibo-logo",
+      }),
+      Object.freeze({
+        label: "京东云存储 CDN",
+        value: "https://storage.360buyimg.com/component-libray/images/pc/re-logo.png",
       }),
     ]),
   }),

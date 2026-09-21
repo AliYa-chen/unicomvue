@@ -12,9 +12,9 @@ import {
   NETWORK_INTERNATIONAL_TRACE_URL,
   NETWORK_LATENCY_INITIAL_SAMPLES,
   NETWORK_LATENCY_INTERVAL_MS,
-  NETWORK_LATENCY_SAMPLE_GAP_MS,
   NETWORK_LATENCY_URL,
   NETWORK_REQUEST_TIMEOUT_MS,
+  NETWORK_ROUTE_INTERVAL_MS,
 } from "@/config/networkStatus";
 
 const CONNECTION_LABELS = Object.freeze({
@@ -25,6 +25,7 @@ const CONNECTION_LABELS = Object.freeze({
   wimax: "WiMAX",
 });
 const EMPTY_PROFILE = Object.freeze({
+  publicIp: "",
   locationLabel: "",
   carrierLabel: "",
   networkTypeLabel: "",
@@ -34,6 +35,11 @@ const EMPTY_PROFILE = Object.freeze({
 
 function cleanText(value, maximumLength = 48) {
   return typeof value === "string" ? value.trim().slice(0, maximumLength) : "";
+}
+
+function normalizePublicIp(value) {
+  const address = cleanText(value, 64);
+  return /^[0-9a-f:.]+$/i.test(address) ? address : "";
 }
 
 function uniqueText(values) {
@@ -50,10 +56,6 @@ function connectionLabel(apiType = "") {
 
 function unwrapPayload(payload) {
   return payload?.status === 0 && payload?.data ? payload.data : payload;
-}
-
-function payloadIp(payload) {
-  return cleanText(unwrapPayload(payload)?.ip, 64);
 }
 
 function regionName(countryCode) {
@@ -101,6 +103,7 @@ function normalizeProfile(payload, countryCodeHint = "") {
   );
 
   return {
+    publicIp: normalizePublicIp(data?.ip),
     locationLabel: locationParts.join(" "),
     carrierLabel: carrier,
     networkTypeLabel: connectionLabel(data?.type),
@@ -134,22 +137,6 @@ function median(values) {
   const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);
   if (!sorted.length) return null;
   return Math.round(sorted[Math.floor(sorted.length / 2)]);
-}
-
-function waitWithSignal(delayMs, signal) {
-  if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(finish, delayMs);
-    function finish() {
-      signal.removeEventListener("abort", abort);
-      resolve();
-    }
-    function abort() {
-      clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
-    }
-    signal.addEventListener("abort", abort, { once: true });
-  });
 }
 
 async function fetchWithTimeout(url, options, parentSignal) {
@@ -187,6 +174,7 @@ async function fetchNetworkInfo(signal, ip = "") {
 async function fetchInternationalTrace(signal) {
   const url = new URL(NETWORK_INTERNATIONAL_TRACE_URL);
   url.searchParams.set("_", `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const startedAt = performance.now();
   const response = await fetchWithTimeout(url.href, {
     cache: "no-store",
     credentials: "omit",
@@ -194,23 +182,39 @@ async function fetchInternationalTrace(signal) {
     referrerPolicy: "no-referrer",
   }, signal);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return parseTrace(await response.text());
+  return {
+    ...parseTrace(await response.text()),
+    latencyMs: Math.max(1, Math.round(performance.now() - startedAt)),
+  };
 }
 
-async function measureLatency(signal, routeKind) {
-  const international = routeKind === "international";
-  const target = international ? NETWORK_INTERNATIONAL_TRACE_URL : NETWORK_LATENCY_URL;
-  const url = new URL(target);
+async function measureLatency(signal) {
+  const url = new URL(NETWORK_LATENCY_URL);
   url.searchParams.set("_", `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const startedAt = performance.now();
   await fetchWithTimeout(url.href, {
-    method: international ? "GET" : "HEAD",
+    method: "HEAD",
     cache: "no-store",
     credentials: "omit",
-    mode: international ? "cors" : "no-cors",
+    mode: "no-cors",
     referrerPolicy: "no-referrer",
   }, signal);
   return Math.max(1, Math.round(performance.now() - startedAt));
+}
+
+function routeKindFromCountryCode(countryCode) {
+  const normalized = cleanText(countryCode, 8).toUpperCase();
+  if (!normalized) return "unknown";
+  return normalized === "CN" ? "domestic" : "international";
+}
+
+function traceFingerprint(trace) {
+  if (!trace?.ip && !trace?.countryCode) return "";
+  return `${trace.ip || ""}|${trace.countryCode || ""}`;
+}
+
+function nextPollDelay(startedAt, intervalMs) {
+  return Math.max(0, intervalMs - (performance.now() - startedAt));
 }
 
 export function useNetworkStatus() {
@@ -224,10 +228,13 @@ export function useNetworkStatus() {
 
   let profileUpdatedAt = 0;
   let latencySamples = [];
+  let currentTrace = null;
   let profileTimer = null;
   let latencyTimer = null;
+  let routeTimer = null;
   let profileController = null;
   let latencyController = null;
+  let routeController = null;
   let runGeneration = 0;
   let disposed = false;
 
@@ -255,8 +262,10 @@ export function useNetworkStatus() {
   function clearTimers() {
     if (profileTimer !== null) clearTimeout(profileTimer);
     if (latencyTimer !== null) clearTimeout(latencyTimer);
+    if (routeTimer !== null) clearTimeout(routeTimer);
     profileTimer = null;
     latencyTimer = null;
+    routeTimer = null;
   }
 
   function stopRequests() {
@@ -264,8 +273,10 @@ export function useNetworkStatus() {
     clearTimers();
     profileController?.abort();
     latencyController?.abort();
+    routeController?.abort();
     profileController = null;
     latencyController = null;
+    routeController = null;
     profileLoading.value = false;
     latencyLoading.value = false;
   }
@@ -280,7 +291,62 @@ export function useNetworkStatus() {
     }, delay);
   }
 
-  async function refreshProfile(force = false, generation = runGeneration) {
+  function startLatencyIfNeeded(generation) {
+    if (
+      shouldRun()
+      && generation === runGeneration
+      && profile.value.routeKind !== "international"
+      && !latencyController
+      && latencyTimer === null
+    ) {
+      queueMicrotask(() => {
+        if (
+          shouldRun()
+          && generation === runGeneration
+          && profile.value.routeKind !== "international"
+          && !latencyController
+          && latencyTimer === null
+        ) {
+          void runLatencyCycle(generation);
+        }
+      });
+    }
+  }
+
+  function resetLatencyTarget(generation) {
+    if (latencyTimer !== null) clearTimeout(latencyTimer);
+    latencyTimer = null;
+    latencyController?.abort();
+    latencyController = null;
+    latencySamples = [];
+    latencyMs.value = null;
+    latencyError.value = "";
+    latencyLoading.value = profile.value.routeKind !== "international";
+    startLatencyIfNeeded(generation);
+  }
+
+  function commitProfile(nextProfile, generation) {
+    if (!nextProfile || generation !== runGeneration) return;
+    const routeChanged = profile.value.routeKind !== nextProfile.routeKind;
+    profile.value = nextProfile;
+    profileUpdatedAt = Date.now();
+    profileError.value = "";
+    if (routeChanged) resetLatencyTarget(generation);
+  }
+
+  function recordLatency(sample) {
+    if (!Number.isFinite(sample)) return;
+    latencySamples = [...latencySamples, sample].slice(-NETWORK_LATENCY_INITIAL_SAMPLES);
+    latencyMs.value = median(latencySamples);
+    latencyError.value = "";
+    latencyLoading.value = false;
+  }
+
+  async function refreshProfile(
+    force = false,
+    generation = runGeneration,
+    traceOverride = currentTrace,
+  ) {
     if (!shouldRun() || generation !== runGeneration) return;
     if (!force && profileUpdatedAt && Date.now() - profileUpdatedAt < NETWORK_INFO_REFRESH_MS) {
       const detectedType = connectionLabel();
@@ -295,94 +361,113 @@ export function useNetworkStatus() {
     profileController = controller;
     profileLoading.value = true;
     profileError.value = "";
+    const trace = traceOverride;
+    const requestedTraceFingerprint = traceFingerprint(trace);
 
     try {
-      const [directResult, traceResult] = await Promise.allSettled([
-        fetchNetworkInfo(controller.signal),
-        fetchInternationalTrace(controller.signal),
-      ]);
+      const payload = await fetchNetworkInfo(controller.signal, trace?.ip || "");
       if (generation !== runGeneration || controller.signal.aborted) return;
+      if (requestedTraceFingerprint !== traceFingerprint(currentTrace)) return;
 
-      const directPayload = directResult.status === "fulfilled" ? directResult.value : null;
-      const directProfile = directPayload ? normalizeProfile(directPayload) : null;
-      const trace = traceResult.status === "fulfilled" ? traceResult.value : null;
-      let internationalProfile = null;
-
-      if (trace?.ip) {
-        try {
-          const tracePayload = trace.ip === payloadIp(directPayload)
-            ? directPayload
-            : await fetchNetworkInfo(controller.signal, trace.ip);
-          internationalProfile = tracePayload
-            ? normalizeProfile(tracePayload, trace.countryCode)
-            : null;
-        } catch {
-          // The direct profile remains a valid fallback when the trace lookup fails.
-        }
-      }
-
-      const nextProfile = internationalProfile?.routeKind === "international"
-        ? internationalProfile
-        : hasProfileDetails(directProfile)
-          ? directProfile
-          : internationalProfile;
+      const normalizedProfile = normalizeProfile(payload, trace?.countryCode);
+      const tracedRouteKind = routeKindFromCountryCode(trace?.countryCode);
+      const nextProfile = tracedRouteKind === "unknown"
+        ? normalizedProfile
+        : {
+            ...normalizedProfile,
+            routeKind: tracedRouteKind,
+            routeLabel: tracedRouteKind === "international" ? "国际线路" : "",
+          };
       if (!hasProfileDetails(nextProfile)) throw new Error("网络信息查询失败");
-
-      const routeChanged = profile.value.routeKind !== nextProfile.routeKind;
-      const hadLatencyActivity = Boolean(
-        latencyController
-        || latencyTimer !== null
-        || latencyMs.value !== null,
-      );
-      profile.value = nextProfile;
-      profileUpdatedAt = Date.now();
-      profileError.value = "";
-      if (routeChanged) {
-        if (latencyTimer !== null) clearTimeout(latencyTimer);
-        latencyTimer = null;
-        latencyController?.abort();
-        latencyController = null;
-        latencySamples = [];
-        latencyMs.value = null;
-        if (hadLatencyActivity) {
-          queueMicrotask(() => {
-            if (shouldRun() && generation === runGeneration) void runLatencyCycle(generation);
-          });
-        }
-      }
+      commitProfile(nextProfile, generation);
     } catch (error) {
       if (!controller.signal.aborted && generation === runGeneration) {
         profileError.value = error?.message || "网络信息查询失败";
       }
     } finally {
-      if (profileController === controller) profileController = null;
-      if (generation === runGeneration) profileLoading.value = false;
+      if (profileController === controller) {
+        profileController = null;
+        if (generation === runGeneration) profileLoading.value = false;
+      }
       if (!controller.signal.aborted) scheduleProfileRefresh(generation);
     }
   }
 
-  async function runLatencyCycle(generation = runGeneration) {
+  async function runRouteCycle(generation = runGeneration) {
     if (!shouldRun() || generation !== runGeneration) return;
+    const cycleStartedAt = performance.now();
+    routeController?.abort();
+    const controller = new AbortController();
+    routeController = controller;
+
+    try {
+      const trace = await fetchInternationalTrace(controller.signal);
+      if (generation !== runGeneration || controller.signal.aborted) return;
+
+      const previousFingerprint = traceFingerprint(currentTrace);
+      const nextFingerprint = traceFingerprint(trace);
+      currentTrace = trace;
+      const traceChanged = Boolean(
+        nextFingerprint
+        && nextFingerprint !== previousFingerprint
+      );
+      if (traceChanged && profile.value.publicIp) {
+        profile.value = { ...profile.value, publicIp: "" };
+      }
+
+      const detectedRouteKind = routeKindFromCountryCode(trace.countryCode);
+      if (
+        detectedRouteKind !== "unknown"
+        && profile.value.routeKind !== detectedRouteKind
+      ) {
+        commitProfile({
+          ...profile.value,
+          locationLabel: detectedRouteKind === "international"
+            ? regionName(trace.countryCode)
+            : "",
+          carrierLabel: "",
+          routeKind: detectedRouteKind,
+          routeLabel: detectedRouteKind === "international" ? "国际线路" : "",
+        }, generation);
+      }
+
+      if (detectedRouteKind === "international") recordLatency(trace.latencyMs);
+      if (traceChanged) {
+        void refreshProfile(true, generation, trace);
+      }
+    } catch {
+      // Keep the last known route while a transient high-frequency probe fails.
+    } finally {
+      if (routeController === controller) routeController = null;
+      if (!controller.signal.aborted && shouldRun() && generation === runGeneration) {
+        routeTimer = setTimeout(() => {
+          routeTimer = null;
+          void runRouteCycle(generation);
+        }, nextPollDelay(cycleStartedAt, NETWORK_ROUTE_INTERVAL_MS));
+      }
+    }
+  }
+
+  async function runLatencyCycle(generation = runGeneration) {
+    if (
+      !shouldRun()
+      || generation !== runGeneration
+      || profile.value.routeKind === "international"
+    ) return;
+    const cycleStartedAt = performance.now();
     latencyController?.abort();
     const controller = new AbortController();
     latencyController = controller;
     latencyLoading.value = latencyMs.value === null;
     latencyError.value = "";
-    const sampleCount = latencyMs.value === null ? NETWORK_LATENCY_INITIAL_SAMPLES : 1;
-    const samples = [];
-
     try {
       // The first request establishes DNS/TLS and is intentionally not shown.
       if (latencyMs.value === null) {
-        await measureLatency(controller.signal, profile.value.routeKind);
+        await measureLatency(controller.signal);
       }
-      for (let index = 0; index < sampleCount; index += 1) {
-        if (index) await waitWithSignal(NETWORK_LATENCY_SAMPLE_GAP_MS, controller.signal);
-        samples.push(await measureLatency(controller.signal, profile.value.routeKind));
-      }
+      const sample = await measureLatency(controller.signal);
       if (generation !== runGeneration || controller.signal.aborted) return;
-      latencySamples = [...latencySamples, ...samples].slice(-NETWORK_LATENCY_INITIAL_SAMPLES);
-      latencyMs.value = median(latencySamples);
+      recordLatency(sample);
     } catch (error) {
       if (!controller.signal.aborted && generation === runGeneration) {
         latencySamples = [];
@@ -392,13 +477,18 @@ export function useNetworkStatus() {
     } finally {
       if (latencyController === controller) latencyController = null;
       if (generation === runGeneration) latencyLoading.value = false;
-      if (!controller.signal.aborted && shouldRun() && generation === runGeneration) {
+      if (
+        !controller.signal.aborted
+        && shouldRun()
+        && generation === runGeneration
+        && profile.value.routeKind !== "international"
+      ) {
         latencyTimer = setTimeout(
           () => {
             latencyTimer = null;
             void runLatencyCycle(generation);
           },
-          NETWORK_LATENCY_INTERVAL_MS,
+          nextPollDelay(cycleStartedAt, NETWORK_LATENCY_INTERVAL_MS),
         );
       }
     }
@@ -413,18 +503,13 @@ export function useNetworkStatus() {
       profile.value = { ...EMPTY_PROFILE, networkTypeLabel: connectionLabel() };
       profileUpdatedAt = 0;
       profileError.value = "";
+      currentTrace = null;
       latencySamples = [];
       latencyMs.value = null;
     }
+    void runRouteCycle(generation);
     void refreshProfile(forceProfile, generation).finally(() => {
-      if (
-        shouldRun()
-        && generation === runGeneration
-        && !latencyController
-        && latencyTimer === null
-      ) {
-        void runLatencyCycle(generation);
-      }
+      startLatencyIfNeeded(generation);
     });
   }
 
@@ -439,6 +524,7 @@ export function useNetworkStatus() {
 
   function handleOffline() {
     offline.value = true;
+    currentTrace = null;
     latencySamples = [];
     latencyMs.value = null;
     stopRequests();

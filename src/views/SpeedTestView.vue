@@ -5,7 +5,7 @@
     :aria-hidden="settingsOpen ? 'true' : undefined"
   >
     <header class="speed-header">
-      <PageHeading eyebrow="Continuous download" title="持续测速" />
+      <PageHeading eyebrow="Continuous download" title="跑满了吗" />
       <div class="flex shrink-0 items-center gap-2">
         <ThemeSelector compact />
         <button
@@ -44,11 +44,10 @@
 
         <p
           class="speed-description"
-          :class="{ 'is-error': connectionError }"
           role="status"
           aria-live="polite"
         >
-          {{ statusDescription }}
+          {{ selectedNodeLabel }}
         </p>
 
         <NetworkStatusBar
@@ -64,36 +63,55 @@
         <div class="speed-chart-wrap">
           <div class="speed-chart-heading mb-2 flex items-center justify-between gap-3">
             <h2 class="text-sm font-semibold">测速曲线</h2>
-            <span class="truncate text-xs text-zinc-500 dark:text-zinc-400">下载 Mbps</span>
+            <span class="truncate text-xs text-zinc-500 dark:text-zinc-400">字节 / 秒</span>
           </div>
           <div class="speed-chart" role="img" :aria-label="chartAriaLabel">
-            <div class="speed-chart__grid" aria-hidden="true"></div>
-            <svg
-              v-if="chartPoints.length > 1"
-              class="relative h-full w-full"
-              viewBox="0 0 640 120"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              <defs>
-                <linearGradient id="speed-chart-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="var(--app-accent-500)" stop-opacity="0.3" />
-                  <stop offset="100%" stop-color="var(--app-accent-500)" stop-opacity="0" />
-                </linearGradient>
-              </defs>
-              <path :d="chartArea" fill="url(#speed-chart-fill)" />
-              <path
-                :d="chartLine"
-                fill="none"
-                stroke="var(--app-accent-500)"
-                stroke-width="3"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                vector-effect="non-scaling-stroke"
-              />
-            </svg>
-            <div v-else class="relative grid h-full place-items-center px-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
-              {{ isRunning ? "正在等待速度样本…" : "开始后显示实时测速曲线" }}
+            <div class="speed-chart__axis" aria-hidden="true">
+              <span
+                v-for="tick in chartTicks"
+                :key="tick.position"
+                class="speed-chart__axis-label"
+                :style="{ '--tick-position': `${tick.position}%` }"
+              >
+                {{ tick.label }}
+              </span>
+            </div>
+            <div class="speed-chart__plot">
+              <div class="speed-chart__grid" aria-hidden="true">
+                <span
+                  v-for="tick in chartTicks"
+                  :key="tick.position"
+                  class="speed-chart__grid-line"
+                  :style="{ '--tick-position': `${tick.position}%` }"
+                ></span>
+              </div>
+              <svg
+                v-if="chartPoints.length > 1"
+                class="relative h-full w-full"
+                viewBox="0 0 640 120"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <defs>
+                  <linearGradient id="speed-chart-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--app-accent-500)" stop-opacity="0.3" />
+                    <stop offset="100%" stop-color="var(--app-accent-500)" stop-opacity="0" />
+                  </linearGradient>
+                </defs>
+                <path :d="chartArea" fill="url(#speed-chart-fill)" />
+                <path
+                  :d="chartLine"
+                  fill="none"
+                  stroke="var(--app-accent-500)"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  vector-effect="non-scaling-stroke"
+                />
+              </svg>
+              <div v-else class="relative grid h-full place-items-center px-3 text-center text-xs text-zinc-500 dark:text-zinc-400">
+                {{ isRunning ? "正在等待速度样本…" : "开始后显示实时测速曲线" }}
+              </div>
             </div>
           </div>
         </div>
@@ -152,7 +170,6 @@
     :active="active"
     :node-groups="nodeGroups"
     :custom-nodes="customNodes"
-    :selected-node-label="selectedNodeLabel"
     :thread-count="threadCount"
     :custom-error="customError"
     :return-focus-target="settingsButtonRef"
@@ -200,6 +217,11 @@ const {
 } = useNetworkStatus();
 let speedValueResizeObserver = null;
 let speedValueFitFrame = 0;
+const BYTES_PER_MEGABIT = 125_000;
+const BYTE_RATE_UNITS = Object.freeze(["B/s", "KiB/s", "MiB/s", "GiB/s", "TiB/s"]);
+const CHART_TICK_INTERVALS = 4;
+const CHART_TOP = 8;
+const CHART_BOTTOM = 112;
 
 const {
   nodeGroups,
@@ -214,9 +236,7 @@ const {
   totalBytes,
   elapsedMs,
   samples,
-  connectionError,
   connectedThreads,
-  startedThreads,
   setThreadCount,
   addCustomNode,
   removeCustomNode,
@@ -242,35 +262,58 @@ const phaseLabel = computed(() => {
   if (phase.value === "error") return "无法开始测速";
   return "准备就绪";
 });
-const statusDescription = computed(() => {
-  if (connectionError.value) return `${connectionError.value}，正在自动重试…`;
-  if (isRunning.value) {
-    const waitingThreads = Math.max(0, startedThreads.value - connectedThreads.value);
-    const waitingLabel = waitingThreads ? ` · ${waitingThreads} 条等待` : "";
-    return `${selectedNodeLabel.value} · ${connectedThreads.value} 条传输${waitingLabel}`;
-  }
-  if (phase.value === "stopped") return `已停止，本次共下载 ${formatBytes(totalBytes.value)}`;
-  return "开始后会持续下载，只有手动停止才会结束。";
+const chartSamples = computed(() => samples.value.slice(-60));
+const chartMaximumMbps = computed(() => Math.max(
+  0,
+  Number.isFinite(peakMbps.value) ? peakMbps.value : 0,
+  ...chartSamples.value.map((sample) => (
+    Number.isFinite(sample.mbps) && sample.mbps > 0 ? sample.mbps : 0
+  )),
+));
+const chartScaleMaxBytesPerSecond = computed(() => {
+  const paddedBytesPerSecond = chartMaximumMbps.value * BYTES_PER_MEGABIT * 1.12;
+  return getNiceByteRateMaximum(paddedBytesPerSecond);
 });
-
+const chartTicks = computed(() => {
+  if (chartMaximumMbps.value <= 0) {
+    return [{ label: "0 B/s", position: (CHART_BOTTOM / 120) * 100 }];
+  }
+  return Array.from(
+    { length: CHART_TICK_INTERVALS + 1 },
+    (_, index) => {
+      const ratio = index / CHART_TICK_INTERVALS;
+      const value = chartScaleMaxBytesPerSecond.value * (1 - ratio);
+      return {
+        label: formatByteRate(value),
+        position: ((CHART_TOP + ratio * (CHART_BOTTOM - CHART_TOP)) / 120) * 100,
+      };
+    },
+  );
+});
 const chartPoints = computed(() => {
-  const values = samples.value.slice(-60);
+  const values = chartSamples.value;
   if (values.length < 2) return [];
-  const maximum = Math.max(1, ...values.map((sample) => sample.mbps)) * 1.12;
-  return values.map((sample, index) => ({
-    x: 8 + (index / (values.length - 1)) * 624,
-    y: 110 - (sample.mbps / maximum) * 98,
-  }));
+  return values.map((sample, index) => {
+    const mbps = Number.isFinite(sample.mbps) && sample.mbps > 0 ? sample.mbps : 0;
+    const ratio = Math.min(
+      1,
+      mbps * BYTES_PER_MEGABIT / chartScaleMaxBytesPerSecond.value,
+    );
+    return {
+      x: 8 + (index / (values.length - 1)) * 624,
+      y: CHART_BOTTOM - ratio * (CHART_BOTTOM - CHART_TOP),
+    };
+  });
 });
 const chartLine = computed(() => chartPoints.value.map((point, index) => (
   `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`
 )).join(" "));
 const chartArea = computed(() => chartPoints.value.length
-  ? `${chartLine.value} L${chartPoints.value.at(-1).x.toFixed(1)},120 L8,120 Z`
+  ? `${chartLine.value} L${chartPoints.value.at(-1).x.toFixed(1)},${CHART_BOTTOM} L8,${CHART_BOTTOM} Z`
   : "");
 const chartAriaLabel = computed(() => samples.value.length
-  ? `最近下载速度 ${formatSpeed(currentMbps.value)} Mbps，峰值 ${formatSpeed(peakMbps.value)} Mbps`
-  : "尚无测速数据");
+  ? `最近下载速度 ${formatSpeed(currentMbps.value)} Mbps（${formatByteRate(currentMbps.value * BYTES_PER_MEGABIT)}），峰值 ${formatSpeed(peakMbps.value)} Mbps（${formatByteRate(peakMbps.value * BYTES_PER_MEGABIT)}），纵轴最高 ${formatByteRate(chartScaleMaxBytesPerSecond.value)}`
+  : "尚无测速数据；开始测速后显示最近下载速度曲线");
 
 function formatSpeed(value) {
   if (!Number.isFinite(value)) return "0.0";
@@ -279,6 +322,55 @@ function formatSpeed(value) {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   }).format(value);
+}
+
+function getNiceNumber(value) {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+  const factor = normalized <= 1
+    ? 1
+    : normalized <= 2
+      ? 2
+      : normalized <= 2.5
+        ? 2.5
+        : normalized <= 5
+          ? 5
+          : 10;
+  return factor * magnitude;
+}
+
+function getNiceByteRateMaximum(value) {
+  const bytesPerSecond = Math.max(1, Number(value) || 0);
+  let unitIndex = Math.min(
+    BYTE_RATE_UNITS.length - 1,
+    Math.max(0, Math.floor(Math.log(bytesPerSecond) / Math.log(1024))),
+  );
+  let unitSize = 1024 ** unitIndex;
+  let step = getNiceNumber(bytesPerSecond / unitSize / CHART_TICK_INTERVALS);
+  let maximum = step * CHART_TICK_INTERVALS * unitSize;
+
+  if (maximum >= unitSize * 1024 && unitIndex < BYTE_RATE_UNITS.length - 1) {
+    unitIndex += 1;
+    unitSize = 1024 ** unitIndex;
+    step = getNiceNumber(bytesPerSecond / unitSize / CHART_TICK_INTERVALS);
+    maximum = step * CHART_TICK_INTERVALS * unitSize;
+  }
+
+  return Math.max(1, maximum);
+}
+
+function formatByteRate(value) {
+  const bytesPerSecond = Math.max(0, Number(value) || 0);
+  if (bytesPerSecond === 0) return "0 B/s";
+
+  const unitIndex = Math.min(
+    BYTE_RATE_UNITS.length - 1,
+    Math.max(0, Math.floor(Math.log(bytesPerSecond) / Math.log(1024))),
+  );
+  const amount = bytesPerSecond / (1024 ** unitIndex);
+  const fractionDigits = amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
+  return `${Number(amount.toFixed(fractionDigits))} ${BYTE_RATE_UNITS[unitIndex]}`;
 }
 
 function fitSpeedValue() {
@@ -387,6 +479,7 @@ onBeforeUnmount(() => {
 .speed-core {
   display: flex;
   width: 100%;
+  min-width: 0;
   flex-direction: column;
   align-items: stretch;
 }
@@ -451,7 +544,6 @@ onBeforeUnmount(() => {
   line-height: 1.25rem;
   color: var(--color-zinc-500);
 }
-.speed-description.is-error { color: var(--color-rose-600); }
 
 .speed-network-status { margin-top: clamp(0.55rem, 1.4dvh, 0.85rem); }
 
@@ -459,20 +551,53 @@ onBeforeUnmount(() => {
 
 .speed-chart {
   position: relative;
+  display: grid;
   height: clamp(7rem, 12dvh, 8.5rem);
   overflow: hidden;
+  grid-template-columns: clamp(3.8rem, 12vw, 4.6rem) minmax(0, 1fr);
   border: 1px solid color-mix(in srgb, var(--color-zinc-300) 75%, transparent);
   border-radius: 1.35rem;
   background: rgb(250 250 250 / 62%);
 }
 
+.speed-chart__axis {
+  position: relative;
+  min-width: 0;
+}
+
+.speed-chart__axis-label {
+  position: absolute;
+  top: var(--tick-position);
+  right: 0.5rem;
+  transform: translateY(-50%);
+  color: var(--color-zinc-500);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.speed-chart__plot {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-left: 1px solid color-mix(in srgb, var(--color-zinc-300) 60%, transparent);
+}
+
 .speed-chart__grid {
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(to right, rgb(161 161 170 / 13%) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(161 161 170 / 13%) 1px, transparent 1px);
-  background-size: 20% 33.333%;
+  background-image: linear-gradient(to right, rgb(161 161 170 / 13%) 1px, transparent 1px);
+  background-size: 20% 100%;
+}
+
+.speed-chart__grid-line {
+  position: absolute;
+  top: var(--tick-position);
+  right: 0;
+  left: 0;
+  border-top: 1px solid rgb(161 161 170 / 16%);
 }
 
 .speed-status { margin-top: clamp(0.7rem, 1.6dvh, 1rem); }
@@ -532,8 +657,9 @@ onBeforeUnmount(() => {
 }
 
 :global(.dark .speed-description) { color: var(--color-zinc-400); }
-:global(.dark .speed-description.is-error) { color: var(--color-rose-300); }
 :global(.dark .speed-chart) { border-color: rgb(255 255 255 / 10%); background: rgb(9 9 11 / 35%); }
+:global(.dark .speed-chart__axis-label) { color: var(--color-zinc-400); }
+:global(.dark .speed-chart__plot) { border-color: rgb(255 255 255 / 10%); }
 :global(.dark .speed-summary) { border-color: rgb(255 255 255 / 10%); }
 :global(.dark .speed-summary > div + div) { border-color: rgb(255 255 255 / 10%); }
 @keyframes speed-running {
@@ -558,7 +684,11 @@ onBeforeUnmount(() => {
   .speed-gauge { width: clamp(9rem, 22dvh, 12rem); }
   .speed-description, .speed-network-status, .speed-chart-wrap, .speed-summary, .speed-action { margin-top: 0.5rem; }
   .speed-chart-heading { margin-bottom: 0.25rem; }
-  .speed-chart { height: clamp(6rem, 11dvh, 7rem); }
+  .speed-chart {
+    height: clamp(6rem, 11dvh, 7rem);
+    grid-template-columns: 4rem minmax(0, 1fr);
+  }
+  .speed-chart__axis-label { right: 0.4rem; font-size: 0.575rem; }
   .speed-status { display: none; }
   .speed-summary { padding-block: 0.45rem; }
   .speed-action { min-height: 2.75rem; }
@@ -573,6 +703,8 @@ onBeforeUnmount(() => {
   .speed-gauge { width: min(9.25rem, 22dvh); }
   .speed-description, .speed-network-status, .speed-chart-wrap, .speed-summary, .speed-action { margin-top: 0.25rem; }
   .speed-chart { height: min(4.5rem, 12dvh); }
+  .speed-chart__axis-label:nth-child(even),
+  .speed-chart__grid-line:nth-child(even) { display: none; }
   .speed-summary { padding-block: 0.3rem; }
   .speed-action { min-height: 2.5rem; }
 }

@@ -25,7 +25,7 @@
         <header class="flex shrink-0 items-start justify-between gap-4 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
           <div>
             <h2 :id="titleId" class="font-semibold">测速设置</h2>
-            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">下载节点、并发线程与自定义地址</p>
+            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">测速节点、并发线程与自定义地址</p>
           </div>
           <button
             ref="closeButtonRef"
@@ -43,31 +43,30 @@
             <div class="flex items-start gap-3">
               <span class="speed-settings-icon" aria-hidden="true"><Server :size="18" /></span>
               <div class="min-w-0 flex-1">
-                <h3 id="speed-node-title" class="text-sm font-semibold">下载节点</h3>
+                <h3 id="speed-node-title" class="text-sm font-semibold">测速节点</h3>
                 <p class="mt-1 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-                  当前选择：<span class="font-medium text-zinc-700 dark:text-zinc-200">{{ selectedNodeLabel }}</span>
+                  运行中切换节点会立即重新测速。
                 </p>
               </div>
             </div>
 
-            <div v-for="group in builtInNodeGroups" :key="group.label" class="mt-4">
-              <p class="mb-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase dark:text-zinc-500">
-                {{ group.label }}
-              </p>
-              <div class="grid grid-cols-2 gap-2">
-                <button
-                  v-for="node in group.options"
-                  :key="node.value"
-                  type="button"
-                  class="speed-node-option"
-                  :class="{ 'is-selected': selectedUrl === node.value }"
-                  :aria-pressed="selectedUrl === node.value"
-                  @click="selectedUrl = node.value"
-                >
-                  <span class="truncate">{{ node.label }}</span>
-                  <Check v-if="selectedUrl === node.value" :size="15" aria-hidden="true" />
-                </button>
-              </div>
+            <div class="relative mt-4">
+              <select
+                v-model="selectedUrl"
+                class="min-h-11 w-full appearance-none rounded-xl border border-zinc-200 bg-white px-3 pr-10 text-base font-medium text-zinc-800 outline-none transition focus:border-[var(--app-accent-400)] focus:ring-4 focus:ring-[color-mix(in_srgb,var(--app-accent-500)_10%,transparent)] dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                aria-labelledby="speed-node-title"
+              >
+                <optgroup v-for="group in nodeGroups" :key="group.label" :label="group.label">
+                  <option v-for="node in group.options" :key="node.value" :value="node.value">
+                    {{ node.label }}
+                  </option>
+                </optgroup>
+              </select>
+              <ChevronDown
+                :size="17"
+                class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-zinc-400"
+                aria-hidden="true"
+              />
             </div>
 
             <details class="mt-3 rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950/45">
@@ -218,7 +217,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, useId, useTemplateRef, watch } from "vue";
+import { nextTick, useId, useTemplateRef, watch } from "vue";
 import {
   Check,
   ChevronDown,
@@ -249,7 +248,6 @@ const props = defineProps({
   active: { type: Boolean, default: true },
   nodeGroups: { type: Array, default: () => [] },
   customNodes: { type: Array, default: () => [] },
-  selectedNodeLabel: { type: String, default: "" },
   threadCount: { type: Number, required: true },
   customError: { type: String, default: "" },
   returnFocusTarget: { type: Object, default: null },
@@ -268,9 +266,6 @@ const titleId = useId();
 const dialogRef = useTemplateRef("dialogRef");
 const closeButtonRef = useTemplateRef("closeButtonRef");
 const { isDark } = useTheme();
-const builtInNodeGroups = computed(() => (
-  props.nodeGroups.filter((group) => group.label !== "自定义")
-));
 let previouslyFocusedElement = null;
 let skipFocusRestore = false;
 useDocumentScrollLock(open);
@@ -366,32 +361,6 @@ watch(open, async (isOpen) => {
   color: var(--app-accent-700);
 }
 
-.speed-node-option {
-  display: flex;
-  min-width: 0;
-  min-height: 2.75rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  border: 1px solid var(--color-zinc-200);
-  border-radius: 0.75rem;
-  background: rgb(255 255 255 / 80%);
-  padding-inline: 0.75rem;
-  text-align: left;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-zinc-600);
-  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
-}
-
-.speed-node-option:hover { border-color: var(--color-zinc-300); }
-.speed-node-option:focus-visible { outline: 2px solid var(--app-accent-500); outline-offset: 2px; }
-.speed-node-option.is-selected {
-  border-color: color-mix(in srgb, var(--app-accent-500) 42%, transparent);
-  background: var(--app-accent-soft);
-  color: var(--app-accent-700);
-}
-
 .is-dark .speed-settings-card {
   border-color: rgb(255 255 255 / 10%);
   background: rgb(24 24 27 / 58%);
@@ -402,16 +371,4 @@ watch(open, async (isOpen) => {
   color: var(--app-accent-300);
 }
 
-.is-dark .speed-node-option {
-  border-color: var(--color-zinc-700);
-  background: rgb(9 9 11 / 42%);
-  color: var(--color-zinc-300);
-}
-
-.is-dark .speed-node-option:hover { border-color: var(--color-zinc-600); }
-.is-dark .speed-node-option.is-selected {
-  border-color: color-mix(in srgb, var(--app-accent-400) 45%, transparent);
-  background: color-mix(in srgb, var(--app-accent-950) 72%, transparent);
-  color: var(--app-accent-200);
-}
 </style>

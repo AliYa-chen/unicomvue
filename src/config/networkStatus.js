@@ -4,7 +4,7 @@ export const NETWORK_INTERNATIONAL_TRACE_URL = "https://cp.cloudflare.com/cdn-cg
 
 export const NETWORK_INFO_REFRESH_MS = 60_000;
 export const NETWORK_INFO_RETRY_MS = 30_000;
-export const NETWORK_LATENCY_INTERVAL_MS = 5_000;
-export const NETWORK_LATENCY_SAMPLE_GAP_MS = 220;
+export const NETWORK_ROUTE_INTERVAL_MS = 500;
+export const NETWORK_LATENCY_INTERVAL_MS = 500;
 export const NETWORK_LATENCY_INITIAL_SAMPLES = 3;
 export const NETWORK_REQUEST_TIMEOUT_MS = 5_000;
