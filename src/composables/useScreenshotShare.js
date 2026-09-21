@@ -115,7 +115,7 @@ export function useScreenshotShare({
       backgroundColor: isDark.value ? "#18181b" : "#fafafa",
       cacheBust: true,
       pixelRatio: getScreenshotPixelRatio(target),
-      filter: (node) => node !== excludedTarget.value,
+      filter: (node) => node !== excludedTarget?.value,
     });
   }
 

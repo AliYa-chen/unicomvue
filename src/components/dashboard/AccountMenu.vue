@@ -10,6 +10,7 @@
       :key="account.id"
       type="button"
       class="flex min-h-12 w-full items-center gap-2 rounded-md px-2.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      :aria-pressed="account.id === currentId"
       :class="account.id === currentId ? 'bg-indigo-50 dark:bg-indigo-950/40' : ''"
       @click="emit('select', account.id)"
     >

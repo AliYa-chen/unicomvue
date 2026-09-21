@@ -9,6 +9,7 @@
       :class="themeMode === 'light' ? 'bg-white text-amber-600 hover:shadow-sm dark:bg-zinc-700 dark:text-amber-400' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
       title="浅色主题"
       aria-label="浅色主题"
+      :aria-pressed="themeMode === 'light'"
       @click="selectTheme('light')"
     >
       <Sun :size="16" />
@@ -19,6 +20,7 @@
       :class="themeMode === 'system' ? 'bg-white text-indigo-600 hover:shadow-sm dark:bg-zinc-700 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
       title="跟随系统主题"
       aria-label="跟随系统主题"
+      :aria-pressed="themeMode === 'system'"
       @click="selectTheme('system')"
     >
       <Monitor :size="16" />
@@ -29,6 +31,7 @@
       :class="themeMode === 'dark' ? 'bg-white text-indigo-600 hover:shadow-sm dark:bg-zinc-700 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
       title="深色主题"
       aria-label="深色主题"
+      :aria-pressed="themeMode === 'dark'"
       @click="selectTheme('dark')"
     >
       <Moon :size="16" />
@@ -39,6 +42,7 @@
     <button
       type="button"
       class="flex h-9 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition"
+      :aria-pressed="themeMode === 'light'"
       :class="themeMode === 'light' ? 'bg-white text-amber-600 hover:shadow-sm dark:bg-zinc-700 dark:text-amber-400' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
       @click="selectTheme('light')"
     >
@@ -47,6 +51,7 @@
     <button
       type="button"
       class="flex h-9 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition"
+      :aria-pressed="themeMode === 'system'"
       :class="themeMode === 'system' ? 'bg-white text-indigo-600 hover:shadow-sm dark:bg-zinc-700 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
       @click="selectTheme('system')"
     >
@@ -55,6 +60,7 @@
     <button
       type="button"
       class="flex h-9 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition"
+      :aria-pressed="themeMode === 'dark'"
       :class="themeMode === 'dark' ? 'bg-white text-indigo-600 hover:shadow-sm dark:bg-zinc-700 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
       @click="selectTheme('dark')"
     >

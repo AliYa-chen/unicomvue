@@ -23,9 +23,9 @@ const COMMIT = readGitValue(["rev-parse", "--short", "HEAD"]);
 
 function thirdPartyLicenseAssets() {
   const assets = [
-    ["THIRD_PARTY_NOTICES.md", "./THIRD_PARTY_NOTICES.md"],
-    ["LICENSE", "./src/vendor/liquid-glass/LICENSE"],
-    ["NOTICE", "./src/vendor/liquid-glass/NOTICE"],
+    ["liquid-glass/LICENSE", "./src/vendor/liquid-glass/LICENSE"],
+    ["liquid-glass/NOTICE", "./src/vendor/liquid-glass/NOTICE"],
+    ["networkpanel/LICENSE", "./third_party/networkpanel/LICENSE"],
   ];
 
   return {

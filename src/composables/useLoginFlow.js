@@ -21,6 +21,12 @@ function responseMessage(error, fallback) {
   return error?.message ? String(error.message) : fallback;
 }
 
+function saveRecentPhone(phone) {
+  if (getStorageItem(UNICOM_STORAGE_KEYS.saveAccountsPreference, "true") !== "false") {
+    setStorageItem(UNICOM_STORAGE_KEYS.phoneHistory, phone);
+  }
+}
+
 export function useLoginFlow(
   open,
   { captchaScriptTimeoutMs = CAPTCHA_SCRIPT_TIMEOUT_MS } = {},
@@ -261,7 +267,7 @@ export function useLoginFlow(
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const snapshot = identitySnapshot();
-        setStorageItem(UNICOM_STORAGE_KEYS.phoneHistory, snapshot.phone);
+        saveRecentPhone(snapshot.phone);
         const result = await sendLoginCode({
           phone: snapshot.phone,
           appId: snapshot.appId,
@@ -316,7 +322,7 @@ export function useLoginFlow(
 
     try {
       const snapshot = identitySnapshot();
-      setStorageItem(UNICOM_STORAGE_KEYS.phoneHistory, snapshot.phone);
+      saveRecentPhone(snapshot.phone);
       const result = await loginWithSms({
         phone: snapshot.phone,
         code: String(code.value || "").trim(),
@@ -377,7 +383,9 @@ export function useLoginFlow(
     cancelPendingWork();
     stopSmsCountdown();
     mode.value = "sms";
-    phone.value = getStorageItem(UNICOM_STORAGE_KEYS.phoneHistory, "");
+    phone.value = getStorageItem(UNICOM_STORAGE_KEYS.saveAccountsPreference, "true") === "false"
+      ? ""
+      : getStorageItem(UNICOM_STORAGE_KEYS.phoneHistory, "");
     code.value = "";
     token.value = "";
     setMessage("");

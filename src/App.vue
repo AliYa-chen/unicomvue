@@ -1,6 +1,5 @@
 <script setup>
-import { nextTick, ref } from "vue";
-import AppFooter from "@/components/app/AppFooter.vue";
+import { computed, nextTick, ref } from "vue";
 import GlassBottomNav from "@/components/app/GlassBottomNav.vue";
 import SpotlightBackground from "@/components/app/SpotlightBackground.vue";
 import PrivacyModal from "@/components/privacy/PrivacyModal.vue";
@@ -11,10 +10,17 @@ import SpeedTestView from "@/views/SpeedTestView.vue";
 
 const privacyOpen = ref(false);
 const loginOpen = ref(false);
+const dashboardSettingsOpen = ref(false);
 const speedSettingsOpen = ref(false);
 const activeTab = ref("usage");
 const theme = provideTheme();
 const { isDark } = theme;
+const modalOpen = computed(() => (
+  privacyOpen.value
+  || loginOpen.value
+  || dashboardSettingsOpen.value
+  || speedSettingsOpen.value
+));
 
 function openPrivacy() {
   privacyOpen.value = true;
@@ -40,30 +46,26 @@ providePrivacy(openPrivacy);
     <SpotlightBackground :active="isDark" />
     <div
       class="relative z-[2]"
-      :class="{ 'pb-[calc(7rem+env(safe-area-inset-bottom))]': activeTab === 'usage' }"
-      :inert="privacyOpen || loginOpen || speedSettingsOpen"
-      :aria-hidden="privacyOpen || loginOpen || speedSettingsOpen ? 'true' : undefined"
+      :inert="modalOpen"
+      :aria-hidden="modalOpen ? 'true' : undefined"
     >
-      <DashboardView
-        v-show="activeTab === 'usage'"
-        v-model:login-open="loginOpen"
-        :active="activeTab === 'usage'"
-      />
-      <SpeedTestView
-        v-show="activeTab === 'speed'"
-        v-model:settings-open="speedSettingsOpen"
-        :active="activeTab === 'speed'"
-      />
-      <AppFooter
-        v-show="activeTab === 'usage'"
-        class="relative"
-        @open-privacy="openPrivacy"
-      />
+      <div v-show="activeTab === 'usage'" class="usage-page-shell">
+        <DashboardView
+          v-model:login-open="loginOpen"
+          v-model:settings-open="dashboardSettingsOpen"
+          :active="activeTab === 'usage'"
+        />
+      </div>
+      <div v-show="activeTab === 'speed'">
+        <SpeedTestView
+          v-model:settings-open="speedSettingsOpen"
+          :active="activeTab === 'speed'"
+        />
+      </div>
     </div>
     <GlassBottomNav
+      v-if="!modalOpen"
       :active-tab="activeTab"
-      :inert="privacyOpen || speedSettingsOpen || undefined"
-      :aria-hidden="privacyOpen || speedSettingsOpen ? 'true' : undefined"
       @change="changeTab"
     />
     <div id="app-top-modal-root" class="relative z-[130]"></div>
@@ -77,3 +79,18 @@ providePrivacy(openPrivacy);
     <div class="screen-watermark" aria-hidden="true"></div>
   </div>
 </template>
+
+<style scoped>
+.usage-page-shell {
+  display: flex;
+  min-height: calc(
+    100dvh
+    - env(safe-area-inset-top, 0px)
+    - env(safe-area-inset-bottom, 0px)
+  );
+  flex-direction: column;
+  box-sizing: border-box;
+  /* Canvas overscan 24px + capsule 64px + overscan 24px + 8px gap. */
+  padding-bottom: 120px;
+}
+</style>

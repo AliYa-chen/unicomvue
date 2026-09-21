@@ -1,4 +1,22 @@
 :root {
+  --app-accent-50: #eef2ff;
+  --app-accent-100: #e0e7ff;
+  --app-accent-200: #c7d2fe;
+  --app-accent-300: #a5b4fc;
+  --app-accent-400: #818cf8;
+  --app-accent-500: #6366f1;
+  --app-accent-600: #4f46e5;
+  --app-accent-700: #4338ca;
+  --app-accent-800: #3730a3;
+  --app-accent-900: #312e81;
+  --app-accent-950: #1e1b4b;
+  --app-accent: var(--app-accent-600);
+  --app-accent-hover: var(--app-accent-700);
+  --app-accent-action: #4f46e5;
+  --app-accent-action-hover: #4338ca;
+  --app-accent-soft: var(--app-accent-50);
+  --app-accent-soft-dark: var(--app-accent-950);
+  --app-accent-contrast: #fff;
   background-color: var(--color-zinc-50);
   color: var(--color-zinc-900);
   width: 100%;

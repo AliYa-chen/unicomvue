@@ -2,3 +2,12 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Solid actions use a contrast-checked shade even when accent text uses a lighter one. */
+.app-accent-solid {
+  background-color: var(--app-accent-action);
+  color: #fff;
+}
+.app-accent-solid:hover:not(:disabled) {
+  background-color: var(--app-accent-action-hover);
+}

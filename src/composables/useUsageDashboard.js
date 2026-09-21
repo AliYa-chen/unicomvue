@@ -1,5 +1,5 @@
 import { onScopeDispose, readonly, ref } from "vue";
-import { UNICOM_REFRESH_INTERVAL_MS } from "@/config/unicom";
+import { UNICOM_REFRESH_INTERVAL_MS, UNICOM_STORAGE_KEYS } from "@/config/unicom";
 import { accountDisplayName } from "@/domain/accounts";
 import {
   buildCardsFromOcs,
@@ -12,19 +12,25 @@ import {
   fetchQciData,
   fetchUsage,
 } from "@/services/unicomApi";
+import { getStorageItem, setStorageItem } from "@/services/storage";
 
 function getAccountFailure(data, status = 0) {
-  if (data?.code === "BLACKLIST" || data?.raw === "999997") {
+  if (data?.code === "BLACKLIST" || String(data?.raw ?? "") === "999997") {
     return {
       status: "账号被限制(黑名单)，请稍后重试",
       loginMessage: "您的账号被联通限制 (999997)",
+      removeAccount: false,
     };
   }
 
   const upstreamTokenFailure = data?.code === "UPSTREAM_NON_JSON"
     && /99999[89]/.test(String(data?.raw || ""));
   if (data?.code === "TOKEN_EXPIRED" || status === 401 || upstreamTokenFailure) {
-    return { status: "Token 已失效，请重新登录", loginMessage: "" };
+    return {
+      status: "Token 已失效，请重新登录",
+      loginMessage: "Token 已失效，账号已从本机移除",
+      removeAccount: true,
+    };
   }
 
   return null;
@@ -66,7 +72,9 @@ export function useUsageDashboard(
   const usageCards = ref([]);
   const packageName = ref("");
   const hasLimitService = ref(false);
-  const paused = ref(false);
+  const autoRefresh = ref(
+    getStorageItem(UNICOM_STORAGE_KEYS.autoRefreshPreference, "true") !== "false",
+  );
   const hasLoaded = ref(false);
 
   let disposed = false;
@@ -87,7 +95,7 @@ export function useUsageDashboard(
 
   function scheduleRefresh() {
     clearRefreshTimer();
-    if (!autoRefreshEnabled || paused.value || disposed) return;
+    if (!autoRefreshEnabled || !autoRefresh.value || disposed) return;
 
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
@@ -113,6 +121,12 @@ export function useUsageDashboard(
   }
 
   function removeInvalidAccount(failure) {
+    if (failure.removeAccount === false) {
+      setStatus(failure.status, "error");
+      notify(failure.loginMessage || failure.status, "error");
+      return false;
+    }
+
     const removed = accountStore.removeActiveAccount();
     resetDashboard();
     setStatus(failure.status, "error");
@@ -122,7 +136,7 @@ export function useUsageDashboard(
       return true;
     }
 
-    onRequireLogin(failure.loginMessage);
+    onRequireLogin(failure.loginMessage || failure.status);
     return false;
   }
 
@@ -163,7 +177,6 @@ export function useUsageDashboard(
 
     if (!token) {
       setStatus("未登录", "info");
-      onRequireLogin("");
       return;
     }
 
@@ -265,16 +278,24 @@ export function useUsageDashboard(
     return removed;
   }
 
-  function togglePaused() {
-    paused.value = !paused.value;
-    setStatus(paused.value ? "自动刷新已暂停" : "自动刷新已恢复", "info");
-    if (paused.value) clearRefreshTimer();
-    else scheduleRefresh();
+  function setAutoRefresh(enabled) {
+    autoRefresh.value = Boolean(enabled);
+    setStorageItem(
+      UNICOM_STORAGE_KEYS.autoRefreshPreference,
+      autoRefresh.value ? "true" : "false",
+    );
+    setStatus(autoRefresh.value ? "自动刷新已开启" : "自动刷新已关闭", "info");
+    scheduleRefresh();
+    return autoRefresh.value;
   }
 
   function startAutoRefresh() {
     autoRefreshEnabled = true;
-    if (paused.value) return;
+    if (!accountStore.ecsToken.value) {
+      setStatus("未登录", "info");
+      return;
+    }
+    if (!autoRefresh.value && hasLoaded.value) return;
     void refresh();
   }
 
@@ -299,14 +320,14 @@ export function useUsageDashboard(
     usageCards: readonly(usageCards),
     packageName: readonly(packageName),
     hasLimitService: readonly(hasLimitService),
-    paused: readonly(paused),
+    autoRefresh: readonly(autoRefresh),
     hasLoaded: readonly(hasLoaded),
     setStatus,
     resetDashboard,
     refresh,
     selectAccount,
     removeCurrentAccount,
-    togglePaused,
+    setAutoRefresh,
     startAutoRefresh,
     stopAutoRefresh,
   };

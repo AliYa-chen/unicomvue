@@ -1,13 +1,3 @@
-/*!
- * GooseHyperGlassCDN, Copyright 2026 Minecraftgoose.
- * Licensed under Apache-2.0; see LICENSE and NOTICE in this directory.
- *
- * Local changes: silence development-only pointer logs, omit the catalog-only
- * back control in single-tab modes, enable transparent framebuffer and
- * surface-alpha compositing, and make reconnect cleanup safe.
- */
-/* eslint-disable */
-/* oxlint-disable */
 (() => {
   var __defProp = Object.defineProperty;
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
@@ -1080,9 +1070,6 @@ void main() {
     // --- 4. onDrawSurface: surfaceColor (drawRect(surfaceColor)) --
     if (uSurfaceColor.a > 0.001) {
         color = mix(color, uSurfaceColor.rgb, uSurfaceColor.a);
-        // Local transparent-framebuffer fix: preserve SrcOver coverage when
-        // the sampled backdrop itself is transparent.
-        alpha = uSurfaceColor.a + alpha * (1.0 - uSurfaceColor.a);
     }
 
     // --- 5. Highlight (edge specular) -----------------------------
@@ -5587,7 +5574,7 @@ ${sampleCode}}
       this.canvas = canvas;
       const gl = canvas.getContext("webgl", {
         premultipliedAlpha: false,
-        alpha: true,
+        alpha: false,
         antialias: true,
         preserveDrawingBuffer: false
       });
@@ -7051,11 +7038,9 @@ ${sampleCode}}
     var _a, _b;
     const elements = [];
     const interactions = {};
-    if (!single) {
-      const back = gooseBack(onBack, palette);
-      elements.push(back.element);
-      interactions[back.element.id] = back.interaction;
-    }
+    const back = gooseBack(onBack, palette);
+    elements.push(back.element);
+    interactions[back.element.id] = back.interaction;
     const TABS_PAD = 36 * gooseDP2;
     const TABS_W = W - 2 * TABS_PAD;
     const iconColor = palette.tabsContentColor;
@@ -8926,6 +8911,7 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
       __publicField(this, "_disposed", false);
       __publicField(this, "_gradientLoaded", false);
       __publicField(this, "_onWheel");
+      __publicField(this, "_dbg", null);
       __publicField(this, "_tabsConfig", null);
       __publicField(this, "_buttonsConfig", null);
       __publicField(this, "_dialogConfig", null);
@@ -9036,6 +9022,11 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
           }
         }
         const hasDrag = !!(hit && ((_d = interactions == null ? void 0 : interactions[hit.id]) == null ? void 0 : _d.onDrag));
+        if (!this._dbg) this._dbg = {};
+        if (!this._dbg.downOnce) {
+          this._dbg.downOnce = true;
+          console.log("[lg-debug] down hitId=", hit == null ? void 0 : hit.id, "hasDrag=", hasDrag);
+        }
         this._gestures.set(e.pointerId, {
           pressedId: hit ? hit.id : null,
           startX: x,
@@ -9118,6 +9109,11 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
           const hitEl = id ? this._elements.find((b) => b.id === id) : null;
           const isButton = (hitEl == null ? void 0 : hitEl.kind) === "button" && (hitEl == null ? void 0 : hitEl.isInteractive);
           const hasDrag = !!hitEl && !!((_e = (_d = this._interactions) == null ? void 0 : _d[id]) == null ? void 0 : _e.onDrag);
+          if (hasDrag && !((_f = this._dbg) == null ? void 0 : _f.dragOnce)) {
+            this._dbg = this._dbg || {};
+            this._dbg.dragOnce = true;
+            console.log("[lg-debug] pending\u2192drag id=", id, "onDragType=", typeof ((_h = (_g = this._interactions) == null ? void 0 : _g[id]) == null ? void 0 : _h.onDrag));
+          }
           const isShapeButton = !hasDrag && (hitEl == null ? void 0 : hitEl.kind) === "glass-shape" && (hitEl == null ? void 0 : hitEl.isInteractive) && !!((_j = (_i = this._interactions) == null ? void 0 : _i[id]) == null ? void 0 : _j.onTap);
           if (hasDrag) {
             gs.mode = "drag";
@@ -9252,14 +9248,10 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
     }
     connectedCallback() {
       if (this._renderer || this._siri) return;
-      this._disposed = false;
-      this._gradientLoaded = false;
-      this._gestures.clear();
-      this._prevPinch = null;
       this._dark = this.hasAttribute("dark");
       const overlayButtons = this.hasAttribute("overlay-buttons");
       this._showThemeButton = this.hasAttribute("theme-button");
-      this._state = { ...this._state, hideOverlayButtons: !overlayButtons };
+      this._state = { ...gooseDefState, hideOverlayButtons: !overlayButtons };
       if (this._isSiri()) {
         this._initSiri();
         return;
@@ -9306,11 +9298,6 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
         this._canvas.removeEventListener("pointerleave", this._onUp);
         this._canvas.removeEventListener("pointercancel", this._onUp);
       }
-      window.removeEventListener("pointermove", this._onMove);
-      window.removeEventListener("pointerup", this._onUp);
-      window.removeEventListener("pointercancel", this._onUp);
-      this._gestures.clear();
-      this._prevPinch = null;
       if (this._siri) {
         this._siri.kill();
         this._siri = null;

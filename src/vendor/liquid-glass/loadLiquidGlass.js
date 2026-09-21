@@ -2,7 +2,7 @@ const LIQUID_GLASS_TAG = "liquid-glass";
 
 let loadPromise;
 
-function hasWebGlSupport() {
+function supportsLiquidGlass() {
   if (
     typeof window.customElements === "undefined"
     || typeof window.ResizeObserver === "undefined"
@@ -12,7 +12,6 @@ function hasWebGlSupport() {
   }
 
   const canvas = document.createElement("canvas");
-
   try {
     const context = canvas.getContext("webgl");
     context?.getExtension("WEBGL_lose_context")?.loseContext();
@@ -22,20 +21,10 @@ function hasWebGlSupport() {
   }
 }
 
-/**
- * Load the vendored Liquid Glass Web Component once per page.
- *
- * The feature check happens before evaluating the bundle because the component
- * constructor throws when WebGL is unavailable. Callers can then keep an HTML
- * control visible as a usable fallback instead of mounting a broken element.
- */
 export async function loadLiquidGlass() {
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    return false;
-  }
-
+  if (typeof window === "undefined" || typeof document === "undefined") return false;
   if (window.customElements.get(LIQUID_GLASS_TAG)) return true;
-  if (!hasWebGlSupport()) return false;
+  if (!supportsLiquidGlass()) return false;
 
   loadPromise ??= import("./liquid-glass.js")
     .then(() => Boolean(window.customElements.get(LIQUID_GLASS_TAG)))
@@ -45,4 +34,41 @@ export async function loadLiquidGlass() {
     });
 
   return loadPromise;
+}
+
+/**
+ * Remove a Liquid Glass custom element and explicitly release its WebGL
+ * context after the vendor's disconnected callback has deleted GPU assets.
+ */
+export function disposeLiquidGlassElement(element) {
+  if (!element) return;
+  const gestures = element._gestures instanceof Map
+    ? [...element._gestures.entries()]
+    : [];
+  for (const [pointerId, gesture] of gestures) {
+    if (!gesture?.dragStarted || typeof element._onUp !== "function") continue;
+    const bounds = element._canvas?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+    try {
+      element._onUp({
+        pointerId,
+        clientX: bounds.left + (gesture.x || 0),
+        clientY: bounds.top + (gesture.y || 0),
+      });
+    } catch {
+      // Teardown below still clears listeners and releases the renderer.
+    }
+  }
+  if (typeof window !== "undefined") {
+    window.removeEventListener("pointermove", element._onMove);
+    window.removeEventListener("pointerup", element._onUp);
+    window.removeEventListener("pointercancel", element._onUp);
+  }
+  element._gestures?.clear?.();
+  const context = element._renderer?.gl ?? element._siri?._gl ?? null;
+  element.remove();
+  try {
+    context?.getExtension("WEBGL_lose_context")?.loseContext();
+  } catch {
+    // The renderer may already have released or lost its context.
+  }
 }

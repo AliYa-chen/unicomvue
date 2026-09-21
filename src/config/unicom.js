@@ -11,13 +11,14 @@ export const UNICOM_STORAGE_KEYS = Object.freeze({
   legacyToken: "ecs_token",
   accounts: "unicom_accounts_v1",
   activeAccountId: "unicom_active_account_id",
+  saveAccountsPreference: "unicom_save_accounts_in_browser",
+  autoRefreshPreference: "unicom_auto_refresh_usage",
   phoneHistory: "last_used_phone",
   appId: "unicom_app_id",
   deviceId: "unicom_device_id",
 });
 
 export const UNICOM_REFRESH_INTERVAL_MS = 30_000;
-export const TOKEN_LONG_PRESS_MS = 600;
 export const SMS_COUNTDOWN_SECONDS = 60;
 
 export const CAPTCHA_APP_ID = "195809716";

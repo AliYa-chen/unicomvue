@@ -1,4 +1,4 @@
-import { computed, readonly, ref } from "vue";
+import { computed, onScopeDispose, readonly, ref } from "vue";
 import { UNICOM_STORAGE_KEYS } from "@/config/unicom";
 import {
   accountDisplayName,
@@ -30,9 +30,14 @@ function cleanString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function getSaveAccountsPreference() {
+  return getStorageItem(UNICOM_STORAGE_KEYS.saveAccountsPreference, "true") !== "false";
+}
+
 export function createAccountStore() {
   const accountsState = ref([]);
   const activeAccountIdState = ref("");
+  const saveAccountsInBrowserState = ref(getSaveAccountsPreference());
   const initialized = ref(false);
 
   const currentAccount = computed(() => (
@@ -57,8 +62,26 @@ export function createAccountStore() {
     if (!activeAccountExists) activeAccountIdState.value = accountsState.value[0].id;
   }
 
+  function clearPersistedAccounts() {
+    removeStorageItem(UNICOM_STORAGE_KEYS.accounts);
+    removeStorageItem(UNICOM_STORAGE_KEYS.activeAccountId);
+    removeStorageItem(UNICOM_STORAGE_KEYS.legacyToken);
+    removeStorageItem(UNICOM_STORAGE_KEYS.phoneHistory);
+  }
+
   function persistAccounts() {
     ensureActiveAccount();
+
+    // A second tab may have disabled persistence since this store was created.
+    // Recheck before every write so it cannot silently recreate cleared tokens.
+    if (getStorageItem(UNICOM_STORAGE_KEYS.saveAccountsPreference, null) === "false") {
+      saveAccountsInBrowserState.value = false;
+    }
+    if (!saveAccountsInBrowserState.value) {
+      clearPersistedAccounts();
+      return;
+    }
+
     setStorageJson(UNICOM_STORAGE_KEYS.accounts, accountsState.value);
 
     const activeAccount = currentAccount.value;
@@ -72,8 +95,74 @@ export function createAccountStore() {
     removeStorageItem(UNICOM_STORAGE_KEYS.legacyToken);
   }
 
+  function setSaveAccountsInBrowser(enabled) {
+    const shouldSave = Boolean(enabled);
+    saveAccountsInBrowserState.value = shouldSave;
+    setStorageItem(
+      UNICOM_STORAGE_KEYS.saveAccountsPreference,
+      shouldSave ? "true" : "false",
+    );
+
+    if (shouldSave) {
+      persistAccounts();
+    } else {
+      clearPersistedAccounts();
+    }
+
+    return shouldSave;
+  }
+
+  function syncStoredAccounts() {
+    const now = Date.now();
+    accountsState.value = normalizeAccounts(
+      getStorageJson(UNICOM_STORAGE_KEYS.accounts, []),
+      { createId: createAccountId, now },
+    );
+    activeAccountIdState.value = getStorageItem(
+      UNICOM_STORAGE_KEYS.activeAccountId,
+      "",
+    );
+    ensureActiveAccount();
+  }
+
+  function syncStorage(event) {
+    if (event.key === UNICOM_STORAGE_KEYS.saveAccountsPreference) {
+      const enabled = event.newValue !== "false";
+      saveAccountsInBrowserState.value = enabled;
+      if (!enabled) clearPersistedAccounts();
+      return;
+    }
+
+    if (
+      event.key === UNICOM_STORAGE_KEYS.accounts
+      && saveAccountsInBrowserState.value
+    ) {
+      syncStoredAccounts();
+      return;
+    }
+
+    if (
+      event.key === UNICOM_STORAGE_KEYS.activeAccountId
+      && saveAccountsInBrowserState.value
+    ) {
+      activeAccountIdState.value = String(event.newValue || "");
+      ensureActiveAccount();
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", syncStorage);
+    onScopeDispose(() => window.removeEventListener("storage", syncStorage));
+  }
+
   function initializeAccounts() {
     if (initialized.value) return currentAccount.value;
+
+    if (!saveAccountsInBrowserState.value) {
+      clearPersistedAccounts();
+      initialized.value = true;
+      return currentAccount.value;
+    }
 
     const now = Date.now();
     const storedAccounts = getStorageJson(UNICOM_STORAGE_KEYS.accounts, []);
@@ -221,6 +310,7 @@ export function createAccountStore() {
   return {
     accounts: readonly(accountsState),
     activeAccountId: readonly(activeAccountIdState),
+    saveAccountsInBrowser: readonly(saveAccountsInBrowserState),
     currentAccountLabel,
     ecsToken,
     onlinToken,
@@ -229,6 +319,7 @@ export function createAccountStore() {
     upsertAccount,
     removeActiveAccount,
     selectAccount,
+    setSaveAccountsInBrowser,
     updateActiveAccountMobile,
     updateAccountPackageName,
   };

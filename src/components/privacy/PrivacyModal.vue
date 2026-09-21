@@ -92,7 +92,7 @@
           <button
             ref="confirmButtonRef"
             type="button"
-            class="inline-flex min-w-24 items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 active:scale-[0.99] dark:bg-indigo-500 dark:hover:bg-indigo-400"
+            class="app-accent-solid inline-flex min-w-24 items-center justify-center rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition active:scale-[0.99]"
             @click="close"
           >
             我知道了

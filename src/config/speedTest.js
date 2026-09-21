@@ -1,5 +1,5 @@
 // Built-in download targets follow NetworkPanel's nodes.json.
-// See THIRD_PARTY_NOTICES.md for source and license information.
+// The upstream MIT license is retained at third_party/networkpanel/LICENSE.
 export const SPEED_TEST_NODE_GROUPS = Object.freeze([
   Object.freeze({
     label: "运营商",

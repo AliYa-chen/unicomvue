@@ -31,7 +31,9 @@
             <div :id="titleId" class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
               {{ isAddingAccount ? "添加账号" : "登录" }}
             </div>
-            <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">账号只保存在当前浏览器</div>
+            <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              {{ saveAccountsInBrowser ? "账号保存在当前浏览器" : "账号仅在本次页面会话中使用" }}
+            </div>
           </div>
           <button
             v-if="canClose"
@@ -122,7 +124,7 @@
 
             <button
               type="button"
-              class="mt-1 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 hover:shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+              class="app-accent-solid mt-1 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition hover:shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="loginLoading || smsLoading || !phoneIsValid || !code"
               @click="authenticateWithSms"
             >
@@ -143,12 +145,12 @@
                 v-model.trim="token"
                 rows="4"
                 class="w-full min-w-0 resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-base leading-relaxed outline-none focus:border-zinc-300 focus:bg-white focus:shadow-[0_0_0_4px_rgba(161,161,170,0.2)] dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-600 dark:focus:bg-zinc-900"
-                placeholder="粘贴你的 ecs_token（会写入本地缓存）"
+                :placeholder="saveAccountsInBrowser ? '粘贴你的 ecs_token（会保存在当前浏览器）' : '粘贴你的 ecs_token（本次会话使用）'"
               ></textarea>
             </div>
             <button
               type="button"
-              class="mt-1 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 hover:shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+              class="app-accent-solid mt-1 inline-flex min-h-11 w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition hover:shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="loginLoading || smsLoading || !tokenIsValid"
               @click="authenticateWithToken"
             >
@@ -212,6 +214,7 @@ import { useLoginFlow } from "@/composables/useLoginFlow";
 const props = defineProps({
   canClose: { type: Boolean, default: false },
   isAddingAccount: { type: Boolean, default: false },
+  saveAccountsInBrowser: { type: Boolean, default: true },
   notice: { type: String, default: "" },
   returnFocusTarget: { type: Object, default: null },
 });
