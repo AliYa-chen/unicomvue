@@ -1,4 +1,4 @@
-export const UNICOM_API_BASE_URL = "https://networkapi.2t.hk";
+const UNICOM_API_BASE_URL = "https://networkapi.2t.hk";
 
 export const UNICOM_API_ENDPOINTS = Object.freeze({
   login: `${UNICOM_API_BASE_URL}/gettoken/`,

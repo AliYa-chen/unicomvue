@@ -214,7 +214,7 @@ void main() {
   gl_FragColor = renderLightRays(gl_FragCoord.xy);
 }`;
   const vertexShader = compileShader(context, context.VERTEX_SHADER, vertexSource);
-  let fragmentShader = null;
+  let fragmentShader;
 
   try {
     fragmentShader = compileShader(context, context.FRAGMENT_SHADER, fragmentSource);

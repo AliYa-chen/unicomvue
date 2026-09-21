@@ -11,7 +11,7 @@
       type="button"
       class="flex min-h-12 w-full items-center gap-2 rounded-md px-2.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
       :class="account.id === currentId ? 'bg-indigo-50 dark:bg-indigo-950/40' : ''"
-      @click="emitSelect(account.id)"
+      @click="emit('select', account.id)"
     >
       <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
         <UserRound :size="16" />
@@ -54,7 +54,7 @@
 <script setup>
 import { computed } from "vue";
 import { Check, LogOut, Plus, UserRound } from "@lucide/vue";
-import { accountDisplayName, accountPackageDescription } from "@/domain/accounts.js";
+import { accountDisplayName, accountPackageDescription } from "@/domain/accounts";
 
 const props = defineProps({
   accounts: { type: Array, default: () => [] },
@@ -65,8 +65,4 @@ const emit = defineEmits(["select", "add", "remove"]);
 const hasCurrentAccount = computed(() => (
   props.accounts.some((account) => account.id === props.currentId)
 ));
-
-function emitSelect(accountId) {
-  emit("select", accountId);
-}
 </script>

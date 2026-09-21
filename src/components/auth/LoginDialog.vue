@@ -18,7 +18,6 @@
 
     <div class="login-dialog-viewport relative grid h-full min-h-0 place-items-center overflow-clip">
       <div
-        ref="dialogRef"
         class="max-h-full min-h-0 w-full min-w-0 max-w-md overflow-y-auto overscroll-contain rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl outline-none sm:p-6 dark:border-zinc-800 dark:bg-zinc-900"
         role="dialog"
         aria-modal="true"
@@ -113,7 +112,7 @@
                 <button
                   type="button"
                   class="min-h-11 w-full rounded-xl bg-indigo-50 px-3 py-2 text-sm font-medium whitespace-nowrap text-indigo-600 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 min-[360px]:w-[116px] dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
-                  :disabled="smsLoading || smsCountdown > 0 || !phoneIsValid"
+                  :disabled="smsLoading || loginLoading || smsCountdown > 0 || !phoneIsValid"
                   @click="requestCode"
                 >
                   {{ smsButtonLabel }}
@@ -124,7 +123,7 @@
             <button
               type="button"
               class="mt-1 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 hover:shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-              :disabled="loginLoading || !phoneIsValid || !code"
+              :disabled="loginLoading || smsLoading || !phoneIsValid || !code"
               @click="authenticateWithSms"
             >
               <span>{{ loginLoading ? "正在登录..." : "立即登录" }}</span>
@@ -150,7 +149,7 @@
             <button
               type="button"
               class="mt-1 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 hover:shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-              :disabled="!tokenIsValid"
+              :disabled="loginLoading || smsLoading || !tokenIsValid"
               @click="authenticateWithToken"
             >
               使用该 ecs_token 登录
@@ -206,7 +205,7 @@ import {
   watch,
 } from "vue";
 import { LoaderCircle, LockKeyhole, X } from "@lucide/vue";
-import ExternalScript from "@/components/ExternalScript.vue";
+import ExternalScript from "@/components/auth/ExternalScript.vue";
 import { useDocumentScrollLock } from "@/composables/useDocumentScrollLock";
 import { useLoginFlow } from "@/composables/useLoginFlow";
 
@@ -222,7 +221,6 @@ const titleId = useId();
 const phoneInputId = useId();
 const codeInputId = useId();
 const tokenInputId = useId();
-const dialogRef = useTemplateRef("dialogRef");
 const closeButtonRef = useTemplateRef("closeButtonRef");
 const smsModeButtonRef = useTemplateRef("smsModeButtonRef");
 const phoneInputRef = useTemplateRef("phoneInputRef");

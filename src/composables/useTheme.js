@@ -1,10 +1,18 @@
-import { computed, inject, onBeforeUnmount, onMounted, readonly, ref } from "vue";
+import {
+  computed,
+  inject,
+  onBeforeUnmount,
+  onMounted,
+  provide,
+  readonly,
+  ref,
+} from "vue";
 import { getStorageItem, setStorageItem } from "@/services/storage";
 
 const THEME_STORAGE_KEY = "theme";
 const VALID_THEME_MODES = new Set(["light", "dark", "system"]);
 
-export const themeInjectionKey = Symbol("theme");
+const themeInjectionKey = Symbol("theme");
 
 function getColorSchemeQuery() {
   try {
@@ -15,7 +23,7 @@ function getColorSchemeQuery() {
   }
 }
 
-export function createThemeController() {
+function createThemeController() {
   const savedMode = getStorageItem(THEME_STORAGE_KEY);
   const themeMode = ref(VALID_THEME_MODES.has(savedMode) ? savedMode : "system");
   const mediaQueryList = getColorSchemeQuery();
@@ -54,6 +62,12 @@ export function createThemeController() {
     isDark: readonly(isDark),
     setTheme,
   };
+}
+
+export function provideTheme() {
+  const theme = createThemeController();
+  provide(themeInjectionKey, theme);
+  return theme;
 }
 
 export function useTheme() {

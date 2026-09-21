@@ -108,77 +108,11 @@
 <script setup>
 import { nextTick, ref, shallowRef, useId, useTemplateRef, watch } from "vue";
 import { ShieldCheck, X } from "@lucide/vue";
-import privacyMarkdown from "../../docs/api-and-privacy.md?raw";
+import privacyMarkdown from "@docs/api-and-privacy.md?raw";
 import { useDocumentScrollLock } from "@/composables/useDocumentScrollLock";
+import { extractMarkdownTitle, renderMarkdownSections } from "@/utils/markdown";
 
-function extractDocumentTitle(source) {
-  const heading = String(source).match(/^#\s+(.+)$/m);
-  return heading?.[1]?.trim() || "隐私、Cookie 与 Token 说明";
-}
-
-function renderPrivacyDocument(source, MarkdownIt) {
-  const markdown = new MarkdownIt({
-    html: false,
-    linkify: true,
-    typographer: false,
-  });
-  const defaultLinkOpen = markdown.renderer.rules.link_open
-    || ((tokens, index, options, _environment, renderer) => (
-      renderer.renderToken(tokens, index, options)
-    ));
-
-  markdown.renderer.rules.link_open = (tokens, index, options, environment, renderer) => {
-    const href = tokens[index].attrGet("href") || "";
-    if (/^https?:\/\//i.test(href)) {
-      tokens[index].attrSet("target", "_blank");
-      tokens[index].attrSet("rel", "noopener noreferrer");
-    }
-    return defaultLinkOpen(tokens, index, options, environment, renderer);
-  };
-
-  const environment = {};
-  const tokens = markdown.parse(source, environment);
-  const titleIndex = tokens.findIndex(
-    (token) => token.type === "heading_open" && token.tag === "h1",
-  );
-  const title = titleIndex >= 0 && tokens[titleIndex + 1]?.type === "inline"
-    ? tokens[titleIndex + 1].content.trim()
-    : "隐私、Cookie 与 Token 说明";
-
-  if (titleIndex >= 0) tokens.splice(titleIndex, 3);
-
-  const sections = [];
-  let sectionTitle = "";
-  let sectionTokens = [];
-
-  function appendSection() {
-    if (!sectionTokens.length) return;
-    sections.push(Object.freeze({
-      title: sectionTitle,
-      html: markdown.renderer.render(sectionTokens, markdown.options, environment),
-    }));
-  }
-
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (token.type === "heading_open" && token.tag === "h2") {
-      appendSection();
-      sectionTitle = tokens[index + 1]?.type === "inline"
-        ? tokens[index + 1].content.trim()
-        : "";
-      sectionTokens = [];
-      index += 2;
-      continue;
-    }
-    sectionTokens.push(token);
-  }
-  appendSection();
-
-  return Object.freeze({
-    title,
-    sections: Object.freeze(sections),
-  });
-}
+const PRIVACY_TITLE = "隐私、Cookie 与 Token 说明";
 
 const open = defineModel("open", { type: Boolean, default: false });
 useDocumentScrollLock(open);
@@ -188,7 +122,7 @@ const confirmButtonRef = useTemplateRef("confirmButtonRef");
 const contentScrollRef = useTemplateRef("contentScrollRef");
 const titleId = useId();
 const privacyDocument = shallowRef(Object.freeze({
-  title: extractDocumentTitle(privacyMarkdown),
+  title: extractMarkdownTitle(privacyMarkdown, PRIVACY_TITLE),
   sections: Object.freeze([]),
 }));
 const privacyError = ref("");
@@ -202,7 +136,11 @@ async function loadPrivacyDocument() {
   privacyError.value = "";
   privacyLoadPromise = import("markdown-it")
     .then(({ default: MarkdownIt }) => {
-      privacyDocument.value = renderPrivacyDocument(privacyMarkdown, MarkdownIt);
+      privacyDocument.value = renderMarkdownSections(
+        privacyMarkdown,
+        MarkdownIt,
+        PRIVACY_TITLE,
+      );
       return privacyDocument.value;
     })
     .catch(() => {

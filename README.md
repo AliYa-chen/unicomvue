@@ -23,11 +23,24 @@
 ## 技术栈
 
 - Vue 3 Composition API
-- Vue Router
-- Vite 7
+- Vite 8
 - Tailwind CSS 4
 - pnpm
-- Node.js 原生测试运行器、ESLint 与 Oxlint
+- ESLint 与 Oxlint
+
+## 项目结构
+
+```text
+src/
+├── components/       # 按 app、auth、dashboard、privacy 分类的界面组件
+├── composables/      # Vue 生命周期与可复用交互状态
+├── config/           # 应用常量与接口配置
+├── domain/           # 与界面无关的数据规范化和业务规则
+├── services/         # API、本地存储及登录身份服务
+├── stores/           # 跨组件业务状态
+├── utils/            # 无状态通用工具
+└── views/            # 页面级组合层
+```
 
 ## 接口、隐私与免责声明
 
@@ -46,14 +59,14 @@ flowchart LR
 
 ### 环境要求
 
-- Node.js `^20.19.0` 或 `>=22.12.0`
-- pnpm `10.30.3`
+- Node.js `^20.19.0`、`^22.13.0` 或 `>=24.0.0`
+- pnpm `10.34.5`
 
 推荐通过 Corepack 使用项目声明的 pnpm 版本：
 
 ```bash
 corepack enable
-corepack prepare pnpm@10.30.3 --activate
+corepack prepare pnpm@10.34.5 --activate
 ```
 
 ### 安装与启动
@@ -70,9 +83,7 @@ pnpm dev
 ### 检查与构建
 
 ```bash
-pnpm run lint
-pnpm test
-pnpm run build
+pnpm check
 pnpm preview
 ```
 

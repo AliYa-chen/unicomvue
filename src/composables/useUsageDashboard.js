@@ -1,17 +1,17 @@
-import { computed, onScopeDispose, readonly, ref } from "vue";
-import { UNICOM_REFRESH_INTERVAL_MS } from "../config/unicom.js";
-import { accountDisplayName } from "../domain/accounts.js";
+import { onScopeDispose, readonly, ref } from "vue";
+import { UNICOM_REFRESH_INTERVAL_MS } from "@/config/unicom";
+import { accountDisplayName } from "@/domain/accounts";
 import {
   buildCardsFromOcs,
   extractPackageName,
   formatQciNum,
   formatRateMbps,
-} from "../domain/usage.js";
+} from "@/domain/usage";
 import {
   fetchBasicData,
   fetchQciData,
   fetchUsage,
-} from "../services/unicomApi.js";
+} from "@/services/unicomApi";
 
 function getAccountFailure(data, status = 0) {
   if (data?.code === "BLACKLIST" || data?.raw === "999997") {
@@ -31,7 +31,14 @@ function getAccountFailure(data, status = 0) {
 }
 
 function assertSuccessfulUsage(data) {
-  if (data?.ok === false || (data?.code && String(data.code) !== "0000")) {
+  const code = String(data?.code ?? "");
+  const hasUsagePayload = Array.isArray(data?.resources) || Array.isArray(data?.unshared);
+
+  if (
+    data?.ok === false
+    || (code && code !== "0000")
+    || (!code && !hasUsagePayload)
+  ) {
     throw new Error(data?.msg || "查询失败");
   }
 }
@@ -67,8 +74,6 @@ export function useUsageDashboard(
   let refreshTimer = null;
   let activeController = null;
   let requestGeneration = 0;
-
-  const isEmpty = computed(() => hasLoaded.value && usageCards.value.length === 0);
 
   function setStatus(message, kind = "info") {
     statusText.value = String(message || "");
@@ -188,6 +193,9 @@ export function useUsageDashboard(
       accountStore.updateAccountPackageName(token, nextPackageName);
       usageCards.value = buildCardsFromOcs(usage);
       hasLoaded.value = true;
+      signedRate.value = "—";
+      qciLevel.value = "—";
+      hasLimitService.value = false;
 
       const [basicResult, qciResult] = await Promise.allSettled([
         fetchBasicDataRequest(token, controller.signal),
@@ -204,13 +212,16 @@ export function useUsageDashboard(
         return;
       }
 
-      const basicIsLte = basicResult.status === "fulfilled"
-        ? applyBasicData(basicResult.value)
-        : false;
-      if (qciResult.status === "fulfilled") applyQciData(qciResult.value, basicIsLte);
+      const basicAvailable = basicResult.status === "fulfilled"
+        && String(basicResult.value?.code || "") === "0000";
+      const qciAvailable = qciResult.status === "fulfilled"
+        && String(qciResult.value?.code || "") === "0000";
+      const basicIsLte = basicAvailable ? applyBasicData(basicResult.value) : false;
+      if (qciAvailable) applyQciData(qciResult.value, basicIsLte);
 
       lastUpdatedAt.value = nowLabel();
-      setStatus("已刷新", "ok");
+      if (basicAvailable && qciAvailable) setStatus("已刷新", "ok");
+      else setStatus("余量已刷新，网络信息不完整", "info");
     } catch (error) {
       if (error?.name === "AbortError") return;
       if (!assertCurrentRequest(generation, token, controller.signal)) return;
@@ -290,7 +301,6 @@ export function useUsageDashboard(
     hasLimitService: readonly(hasLimitService),
     paused: readonly(paused),
     hasLoaded: readonly(hasLoaded),
-    isEmpty,
     setStatus,
     resetDashboard,
     refresh,
@@ -298,6 +308,5 @@ export function useUsageDashboard(
     removeCurrentAccount,
     togglePaused,
     startAutoRefresh,
-    stopAutoRefresh,
   };
 }

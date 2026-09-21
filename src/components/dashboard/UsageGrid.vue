@@ -51,7 +51,7 @@
 
 <script setup>
 import { computed, ref, useId, watch } from "vue";
-import UsageCard from "@/components/UsageCard.vue";
+import UsageCard from "@/components/dashboard/UsageCard.vue";
 
 const props = defineProps({
   cards: { type: Array, default: () => [] },

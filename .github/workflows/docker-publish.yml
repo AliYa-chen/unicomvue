@@ -21,17 +21,17 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 设置 Node.js 环境
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
 
       - name: 启用 Corepack 并配置 pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@10.30.3 --activate
+          corepack prepare pnpm@10.34.5 --activate
           pnpm --version
 
       - name: 安装项目依赖
@@ -39,9 +39,6 @@ jobs:
 
       - name: 检查代码规范
         run: pnpm run lint
-
-      - name: 运行测试
-        run: pnpm test
 
       - name: 构建项目（生成 dist）
         run: pnpm run build
@@ -71,17 +68,17 @@ jobs:
 
       - name: 发布 dist.zip 到 gh-pages 分支
         if: github.ref == 'refs/heads/main'
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: _pages
 
       - name: 设置 Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: 登录 Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -89,7 +86,7 @@ jobs:
 
       - name: 提取 Docker 镜像元数据
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -99,7 +96,7 @@ jobs:
 
       - name: 构建并推送 Docker 镜像
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile

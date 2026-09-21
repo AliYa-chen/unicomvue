@@ -1,6 +1,6 @@
 import { inject, provide } from "vue";
 
-export const privacyInjectionKey = Symbol("privacy");
+const privacyInjectionKey = Symbol("privacy");
 
 export function providePrivacy(openPrivacy) {
   if (typeof openPrivacy !== "function") {

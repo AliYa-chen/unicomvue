@@ -3,7 +3,7 @@ import { nextTick, onScopeDispose, readonly, ref } from "vue";
 const SCREENSHOT_TIMEOUT_MS = 20_000;
 export const MAX_SCREENSHOT_PIXELS = 4_000_000;
 export const MAX_SCREENSHOT_DIMENSION = 4_096;
-export const MAX_SCREENSHOT_PIXEL_RATIO = 2;
+const MAX_SCREENSHOT_PIXEL_RATIO = 2;
 
 function getPositiveDimension(...values) {
   const dimensions = values.filter((value) => Number.isFinite(value) && value > 0);

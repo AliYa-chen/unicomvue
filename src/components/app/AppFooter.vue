@@ -1,6 +1,5 @@
 <template>
   <footer class="relative mt-14">
-    <!-- top fade -->
     <div
       class="pointer-events-none absolute inset-x-0 top-0 h-10
              bg-gradient-to-b from-white to-transparent
@@ -12,7 +11,6 @@
              text-xs text-zinc-600 dark:text-zinc-400"
     >
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <!-- left meta -->
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span class="text-zinc-500 dark:text-zinc-500">
             © {{ year }} BinGo Tools
@@ -20,9 +18,7 @@
 
           <span class="hidden sm:inline opacity-40">·</span>
 
-          <!-- branch / commit -->
           <span class="inline-flex items-center gap-1.5">
-            <!-- branch icon -->
             <GitBranch class="h-4 w-4 opacity-70" :stroke-width="1.6" aria-hidden="true" />
 
             <span class="text-zinc-700 dark:text-zinc-300">
@@ -39,9 +35,7 @@
           </span>
         </div>
 
-        <!-- right links -->
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <!-- GitHub -->
           <a
             href="https://github.com/AliYa-chen/unicomvue"
             target="_blank"
@@ -88,7 +82,6 @@
             <span>GitHub</span>
           </a>
 
-          <!-- contact -->
           <a
             :href="`mailto:${contactEmail}`"
             class="text-zinc-700 underline underline-offset-4 decoration-zinc-300
@@ -98,14 +91,13 @@
             联系：{{ contactEmail }}
           </a>
 
-          <!-- privacy -->
           <button
             type="button"
             class="cursor-pointer
                    text-zinc-700 underline underline-offset-4 decoration-zinc-300
                    hover:decoration-zinc-500
                    dark:text-zinc-300 dark:decoration-zinc-600 dark:hover:decoration-zinc-400"
-            @click="emitOpenPrivacy"
+            @click="emit('open-privacy')"
           >
             隐私 / 说明
           </button>
@@ -113,7 +105,6 @@
       </div>
     </div>
 
-    <!-- bottom fade -->
     <div
       class="pointer-events-none absolute inset-x-0 bottom-0 h-10
              bg-gradient-to-t from-white to-transparent
@@ -130,10 +121,6 @@ defineProps({
   contactEmail: { type: String, default: "aliya@nbcnm.cn" },
 });
 const emit = defineEmits(["open-privacy"]);
-
-function emitOpenPrivacy() {
-  emit("open-privacy");
-}
 
 const year = new Date().getFullYear();
 

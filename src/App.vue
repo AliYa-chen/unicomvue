@@ -1,14 +1,13 @@
 <script setup>
-import { RouterView } from "vue-router";
-import { provide, ref } from "vue";
-import FooterView from "@/components/FooterView.vue";
-import PrivacyModal from "@/components/PrivacyModal.vue";
-import SpotlightBackground from "@/components/SpotlightBackground.vue";
+import { ref } from "vue";
+import SpotlightBackground from "@/components/app/SpotlightBackground.vue";
+import PrivacyModal from "@/components/privacy/PrivacyModal.vue";
 import { providePrivacy } from "@/composables/usePrivacy";
-import { createThemeController, themeInjectionKey } from "@/composables/useTheme";
+import { provideTheme } from "@/composables/useTheme";
+import DashboardView from "@/views/DashboardView.vue";
 
 const privacyOpen = ref(false);
-const theme = createThemeController();
+const theme = provideTheme();
 const { isDark } = theme;
 
 function openPrivacy() {
@@ -16,7 +15,6 @@ function openPrivacy() {
 }
 
 providePrivacy(openPrivacy);
-provide(themeInjectionKey, theme);
 </script>
 
 <template>
@@ -30,8 +28,7 @@ provide(themeInjectionKey, theme);
       :inert="privacyOpen"
       :aria-hidden="privacyOpen ? 'true' : undefined"
     >
-      <RouterView />
-      <FooterView class="relative" contact-email="aliya@nbcnm.cn" @open-privacy="openPrivacy" />
+      <DashboardView />
     </div>
     <div
       id="app-modal-root"

@@ -45,7 +45,7 @@ export function isValidToken(token) {
   return normalizeString(token).length > 20;
 }
 
-export function maskPhone(phone) {
+function maskPhone(phone) {
   const normalizedPhone = normalizeString(phone);
   return isValidPhone(normalizedPhone)
     ? `${normalizedPhone.slice(0, 3)}****${normalizedPhone.slice(-4)}`
@@ -58,7 +58,7 @@ export function normalizeMaskedMobile(mobile) {
   return maskPhone(value);
 }
 
-export function tokenSuffix(token) {
+function tokenSuffix(token) {
   return normalizeString(token).slice(-4) || "—";
 }
 

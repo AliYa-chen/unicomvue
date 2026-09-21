@@ -223,6 +223,7 @@
       ></a>
     </main>
 
+    <AppFooter class="relative" @open-privacy="openPrivacy" />
     <LoginDialog
       v-model:open="loginOpen"
       :can-close="hasAccounts"
@@ -248,13 +249,13 @@ import {
   RefreshCw,
   UserRound,
 } from "@lucide/vue";
-import AccountMenu from "@/components/AccountMenu.vue";
-import AppToast from "@/components/AppToast.vue";
-import DashboardSummary from "@/components/DashboardSummary.vue";
-import LoginDialog from "@/components/LoginDialog.vue";
-import ThemeSelector from "@/components/ThemeSelector.vue";
-import UsageGrid from "@/components/UsageGrid.vue";
-import { useAccounts } from "@/composables/useAccounts";
+import AppFooter from "@/components/app/AppFooter.vue";
+import AppToast from "@/components/app/AppToast.vue";
+import ThemeSelector from "@/components/app/ThemeSelector.vue";
+import LoginDialog from "@/components/auth/LoginDialog.vue";
+import AccountMenu from "@/components/dashboard/AccountMenu.vue";
+import DashboardSummary from "@/components/dashboard/DashboardSummary.vue";
+import UsageGrid from "@/components/dashboard/UsageGrid.vue";
 import { useHeaderScrollSurface } from "@/composables/useHeaderScrollSurface";
 import { usePrivacy } from "@/composables/usePrivacy";
 import { useScreenshotShare } from "@/composables/useScreenshotShare";
@@ -262,6 +263,7 @@ import { useTheme } from "@/composables/useTheme";
 import { useToast } from "@/composables/useToast";
 import { useUsageDashboard } from "@/composables/useUsageDashboard";
 import { TOKEN_LONG_PRESS_MS } from "@/config/unicom";
+import { createAccountStore } from "@/stores/accountStore";
 
 const loginOpen = ref(false);
 const loginNotice = ref("");
@@ -275,7 +277,7 @@ const mobileMoreButtonRef = useTemplateRef("mobileMoreButtonRef");
 const loginReturnFocusTarget = shallowRef(null);
 const { surfaceStyle: headerSurfaceStyle } = useHeaderScrollSurface();
 
-const accountStore = useAccounts();
+const accountStore = createAccountStore();
 const {
   accounts,
   activeAccountId,

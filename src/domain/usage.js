@@ -1,13 +1,9 @@
-const DEFAULT_BADGE_CLASS = "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700";
-const POSITIVE_BADGE_CLASS = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800";
-const UNLIMITED_BADGE_CLASS = "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800";
+import { clamp } from "@/utils/number";
 
-export function clamp(value, minimum, maximum) {
-  return Math.max(minimum, Math.min(maximum, value));
-}
-
-export function toNum(value) {
-  const number = Number(String(value ?? "").trim());
+function toNum(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+  const number = Number(normalized);
   return Number.isFinite(number) ? number : null;
 }
 
@@ -22,7 +18,7 @@ export function formatQciNum(value) {
   return number === null ? "—" : String(Math.round(number));
 }
 
-export function formatFlowFromMB(value) {
+function formatFlowFromMB(value) {
   const number = toNum(value);
   if (number === null) return "—";
   return number >= 1024
@@ -30,7 +26,7 @@ export function formatFlowFromMB(value) {
     : `${number.toFixed(2)}MB`;
 }
 
-export function formatMinutes(value) {
+function formatMinutes(value) {
   const number = toNum(value);
   return number === null ? "—" : `${Math.round(number)}分钟`;
 }
@@ -91,13 +87,13 @@ function flowTypeMeta(flowType, unlimited) {
 
   return {
     label,
-    badge: unlimited ? POSITIVE_BADGE_CLASS : DEFAULT_BADGE_CLASS,
+    tone: unlimited ? "positive" : "neutral",
   };
 }
 
 function shareMeta(typeMark) {
-  if (typeMark === "0") return { label: "共享", badge: POSITIVE_BADGE_CLASS };
-  if (typeMark === "1") return { label: "非共享", badge: DEFAULT_BADGE_CLASS };
+  if (typeMark === "0") return { label: "共享", tone: "positive" };
+  if (typeMark === "1") return { label: "非共享", tone: "neutral" };
   return null;
 }
 
@@ -165,14 +161,14 @@ function buildFlowCard(detail) {
   const typeMeta = flowTypeMeta(flowType, unlimited);
   const sharing = unlimited ? shareMeta(detail?.typemark) : null;
   const badges = [
-    { key: "flow-type", text: typeMeta.label, cls: typeMeta.badge },
+    { key: "flow-type", text: typeMeta.label, tone: typeMeta.tone },
     sharing
-      ? { key: "sharing", text: sharing.label, cls: sharing.badge }
+      ? { key: "sharing", text: sharing.label, tone: sharing.tone }
       : null,
     {
       key: "limit",
       text: unlimited ? "无限量" : "有上限",
-      cls: unlimited ? UNLIMITED_BADGE_CLASS : DEFAULT_BADGE_CLASS,
+      tone: unlimited ? "unlimited" : "neutral",
     },
   ].filter(Boolean);
 
@@ -220,8 +216,14 @@ export function buildCardsFromOcs(data) {
     }
   }
 
-  return cards.sort((first, second) => {
+  cards.sort((first, second) => {
     const rankDifference = cardSortRank(first) - cardSortRank(second);
     return rankDifference || String(first.title).localeCompare(String(second.title), "zh-CN");
   });
+
+  for (const card of cards) {
+    delete card.flowTypeRank;
+    delete card.flowLimitedKey;
+  }
+  return cards;
 }

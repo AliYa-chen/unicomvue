@@ -1,7 +1,3 @@
-/* 👇 核心修改：直接操作 :root (即 html)
-   Tailwind v4 自动生成了 --color-zinc-50 等变量，直接用 var() 调用即可
-   完全不需要 @apply，也就不会报错了
-*/
 :root {
   background-color: var(--color-zinc-50);
   color: var(--color-zinc-900);
@@ -14,7 +10,6 @@
   touch-action: pan-y pinch-zoom;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  /* 在这里定义全局过渡，这就不用在每个 div 上写 transition 了 */
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 300ms;
@@ -25,7 +20,6 @@
   color: var(--color-zinc-100);
 }
 
-/* 其他样式保持不变 */
 body {
   margin: 0;
   padding: 0;
@@ -37,7 +31,6 @@ body {
   overscroll-behavior-x: none;
   background-color: inherit;
   color: inherit;
-  /* 移除 body 的背景设置，让它继承 :root */
 }
 
 img, video, canvas {

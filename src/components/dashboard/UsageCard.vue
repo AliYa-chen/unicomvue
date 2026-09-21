@@ -23,7 +23,7 @@
             v-for="badge in card.badges"
             :key="badge.key"
             class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]"
-            :class="badge.cls"
+            :class="badgeClass(badge.tone)"
           >
             {{ badge.text }}
           </span>
@@ -92,6 +92,12 @@
 import { computed } from "vue";
 import { ListFilter, MessageSquareText, PhoneCall } from "@lucide/vue";
 
+const BADGE_CLASS_BY_TONE = Object.freeze({
+  neutral: "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+  positive: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+  unlimited: "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200",
+});
+
 const { card } = defineProps({
   card: {
     type: Object,
@@ -115,4 +121,8 @@ const progressText = computed(() => {
   if (card.unlimited) return "无限量";
   return progressValue.value === null ? "—" : `${progressValue.value.toFixed(2)}%`;
 });
+
+function badgeClass(tone) {
+  return BADGE_CLASS_BY_TONE[tone] || BADGE_CLASS_BY_TONE.neutral;
+}
 </script>

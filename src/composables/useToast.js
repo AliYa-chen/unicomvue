@@ -27,6 +27,5 @@ export function useToast(defaultDuration = 2800) {
     message: readonly(message),
     kind: readonly(kind),
     showToast,
-    clearToast,
   };
 }

@@ -4,81 +4,18 @@ import {
   CAPTCHA_SCRIPT_SRC,
   SMS_COUNTDOWN_SECONDS,
   UNICOM_STORAGE_KEYS,
-} from "../config/unicom.js";
-import { isValidPhone, isValidToken } from "../domain/accounts.js";
+} from "@/config/unicom";
+import { isValidPhone, isValidToken } from "@/domain/accounts";
 import {
   loginWithSms,
   sendLoginCode,
   validateCaptcha,
-} from "../services/unicomApi.js";
-import { getStorageItem, setStorageItem } from "../services/storage.js";
+} from "@/services/unicomApi";
+import { ensureLoginIdentity } from "@/services/loginIdentity";
+import { getStorageItem, setStorageItem } from "@/services/storage";
+import { createAbortError } from "@/utils/errors";
 
 const CAPTCHA_SCRIPT_TIMEOUT_MS = 15_000;
-const APP_ID_PATTERN = /^[a-zA-Z0-9]{64,256}$/;
-const DEVICE_ID_PATTERN = /^[a-f0-9]{32}$/;
-
-const loginIdentityCache = {
-  appId: "",
-  deviceId: "",
-};
-
-function createAbortError() {
-  try {
-    return new DOMException("登录流程已取消", "AbortError");
-  } catch {
-    const error = new Error("登录流程已取消");
-    error.name = "AbortError";
-    return error;
-  }
-}
-
-function generateAppId() {
-  const digit = () => String(Math.floor(Math.random() * 10));
-  return digit() + "f" + digit() + "af" + digit() + digit() + "ad"
-    + digit() + "912d306b5053abf90c7ebbb695887bc"
-    + "870ae0706d573c348539c26c5c0a878641fcc0d3e90acb9be1e6ef858a"
-    + "59af546f3c826988332376b7d18c8ea2398ee3a9c3db947e2471d32a49612";
-}
-
-function generateDeviceId() {
-  const bytes = new Uint8Array(16);
-
-  try {
-    if (typeof globalThis.crypto?.getRandomValues === "function") {
-      globalThis.crypto.getRandomValues(bytes);
-    } else {
-      throw new Error("Secure random values are unavailable");
-    }
-  } catch {
-    for (let index = 0; index < bytes.length; index += 1) {
-      bytes[index] = Math.floor(Math.random() * 256);
-    }
-  }
-
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-export function ensureLoginIdentity() {
-  let appId = getStorageItem(UNICOM_STORAGE_KEYS.appId, "");
-  if (!APP_ID_PATTERN.test(appId)) {
-    appId = APP_ID_PATTERN.test(loginIdentityCache.appId)
-      ? loginIdentityCache.appId
-      : generateAppId();
-    setStorageItem(UNICOM_STORAGE_KEYS.appId, appId);
-  }
-  loginIdentityCache.appId = appId;
-
-  let deviceId = getStorageItem(UNICOM_STORAGE_KEYS.deviceId, "");
-  if (!DEVICE_ID_PATTERN.test(deviceId)) {
-    deviceId = DEVICE_ID_PATTERN.test(loginIdentityCache.deviceId)
-      ? loginIdentityCache.deviceId
-      : generateDeviceId();
-    setStorageItem(UNICOM_STORAGE_KEYS.deviceId, deviceId);
-  }
-  loginIdentityCache.deviceId = deviceId;
-
-  return { appId, deviceId };
-}
 
 function responseMessage(error, fallback) {
   return error?.message ? String(error.message) : fallback;
@@ -176,8 +113,8 @@ export function useLoginFlow(
     generation += 1;
     activeController?.abort();
     activeController = null;
-    settleCaptchaFlow(createAbortError());
-    if (captchaScriptPromise) settleCaptchaScript(createAbortError());
+    settleCaptchaFlow(createAbortError("登录流程已取消"));
+    if (captchaScriptPromise) settleCaptchaScript(createAbortError("登录流程已取消"));
     smsLoading.value = false;
     loginLoading.value = false;
   }
@@ -241,7 +178,9 @@ export function useLoginFlow(
 
   async function runCaptcha(mobile, initialSnapshot, context) {
     await loadCaptchaScript();
-    if (!snapshotIsCurrent(initialSnapshot, context)) throw createAbortError();
+    if (!snapshotIsCurrent(initialSnapshot, context)) {
+      throw createAbortError("登录流程已取消");
+    }
     if (typeof globalThis.TencentCaptcha !== "function") {
       throw new Error("验证码组件加载失败");
     }
@@ -253,7 +192,7 @@ export function useLoginFlow(
       try {
         captchaInstance = new globalThis.TencentCaptcha(CAPTCHA_APP_ID, async (result) => {
           if (!snapshotIsCurrent(initialSnapshot, context)) {
-            settleCaptchaFlow(createAbortError());
+            settleCaptchaFlow(createAbortError("登录流程已取消"));
             return;
           }
 
@@ -266,7 +205,7 @@ export function useLoginFlow(
           setMessage("正在进行安全验证...", "ok");
           const snapshot = identitySnapshot();
           if (snapshot.phone !== initialSnapshot.phone) {
-            settleCaptchaFlow(createAbortError());
+            settleCaptchaFlow(createAbortError("登录流程已取消"));
             return;
           }
 
@@ -281,7 +220,7 @@ export function useLoginFlow(
             }, context.controller.signal);
 
             if (!snapshotIsCurrent(snapshot, context)) {
-              settleCaptchaFlow(createAbortError());
+              settleCaptchaFlow(createAbortError("登录流程已取消"));
               return;
             }
 
@@ -304,7 +243,14 @@ export function useLoginFlow(
   }
 
   async function sendCode() {
-    if (!phoneIsValid.value || smsLoading.value || smsCountdown.value > 0) return false;
+    if (
+      !phoneIsValid.value
+      || smsLoading.value
+      || loginLoading.value
+      || smsCountdown.value > 0
+    ) {
+      return false;
+    }
 
     const context = beginRequest();
     smsLoading.value = true;
@@ -356,7 +302,12 @@ export function useLoginFlow(
   }
 
   async function submitSmsLogin() {
-    if (!phoneIsValid.value || !String(code.value || "").trim() || loginLoading.value) {
+    if (
+      !phoneIsValid.value
+      || !String(code.value || "").trim()
+      || loginLoading.value
+      || smsLoading.value
+    ) {
       return null;
     }
 
@@ -414,7 +365,11 @@ export function useLoginFlow(
   }
 
   function setMode(nextMode) {
-    mode.value = nextMode === "token" ? "token" : "sms";
+    const normalizedMode = nextMode === "token" ? "token" : "sms";
+    if (normalizedMode === mode.value) return;
+
+    cancelPendingWork();
+    mode.value = normalizedMode;
     setMessage("");
   }
 

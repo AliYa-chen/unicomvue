@@ -30,7 +30,7 @@ function cleanString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function useAccounts() {
+export function createAccountStore() {
   const accountsState = ref([]);
   const activeAccountIdState = ref("");
   const initialized = ref(false);
@@ -221,7 +221,6 @@ export function useAccounts() {
   return {
     accounts: readonly(accountsState),
     activeAccountId: readonly(activeAccountIdState),
-    currentAccount,
     currentAccountLabel,
     ecsToken,
     onlinToken,
@@ -232,7 +231,5 @@ export function useAccounts() {
     selectAccount,
     updateActiveAccountMobile,
     updateAccountPackageName,
-    getEcsToken: () => ecsToken.value,
-    getOnlinToken: () => onlinToken.value,
   };
 }

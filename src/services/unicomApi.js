@@ -1,9 +1,10 @@
 import {
   UNICOM_API_ENDPOINTS,
   UNICOM_ECS_ACCOUNT,
-} from "../config/unicom.js";
+} from "@/config/unicom";
+import { createAbortError } from "@/utils/errors";
 
-export const UNICOM_API_TIMEOUT_MS = 20_000;
+const UNICOM_API_TIMEOUT_MS = 20_000;
 
 const JSON_HEADERS = Object.freeze({
   Accept: "application/json",
@@ -21,27 +22,17 @@ export class UnicomApiError extends Error {
 
 function looksLikeHtml(value) {
   const start = String(value || "").trimStart().slice(0, 200).toLowerCase();
-  return start.startsWith("<") || start.startsWith("<!doctype");
+  return start.startsWith("<");
 }
 
 function responseErrorMessage(data, status) {
   return String(data?.msg || data?.message || `请求失败（HTTP ${status}）`);
 }
 
-function createAbortError() {
-  try {
-    return new DOMException("请求已取消", "AbortError");
-  } catch {
-    const error = new Error("请求已取消");
-    error.name = "AbortError";
-    return error;
-  }
-}
-
 function abortErrorFromSignal(signal) {
   return signal?.reason?.name === "AbortError"
     ? signal.reason
-    : createAbortError();
+    : createAbortError("请求已取消");
 }
 
 function normalizedTimeout(timeoutMs) {
@@ -97,7 +88,7 @@ function createRequestCancellation(externalSignal, timeoutMs) {
   };
 }
 
-export async function parseJsonResponse(response) {
+async function parseJsonResponse(response) {
   const text = await response.text();
 
   if (looksLikeHtml(text)) {

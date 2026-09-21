@@ -1,13 +1,10 @@
-import { computed, onBeforeUnmount, onMounted, readonly, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { clamp } from "@/utils/number";
 
 export const HEADER_SCROLL_DISTANCE = 160;
 export const HEADER_BACKGROUND_MAX_PERCENT = 88;
 export const HEADER_BORDER_MAX_PERCENT = 72;
 export const HEADER_BACKDROP_MAX_PX = 18;
-
-function clamp(value, minimum, maximum) {
-  return Math.min(Math.max(value, minimum), maximum);
-}
 
 function roundCssValue(value) {
   return Math.round(value * 1_000) / 1_000;
@@ -63,7 +60,6 @@ export function useHeaderScrollSurface(options = {}) {
   });
 
   return {
-    progress: readonly(progress),
     surfaceStyle: computed(() => getHeaderSurfaceStyle(progress.value)),
   };
 }
