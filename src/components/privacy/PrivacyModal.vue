@@ -1,5 +1,5 @@
 <template>
-  <div v-show="open" class="fixed inset-0 z-111" @keydown.esc.stop.prevent="close">
+  <div v-show="open" class="fixed inset-0 z-[140]" @keydown.esc.stop.prevent="close">
     <div
       class="absolute inset-0 bg-zinc-900/50 backdrop-blur-[1px] dark:bg-black/80"
       aria-hidden="true"

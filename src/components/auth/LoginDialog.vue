@@ -29,7 +29,7 @@
         <div class="flex min-w-0 items-start justify-between gap-3">
           <div class="min-w-0">
             <div :id="titleId" class="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-              {{ canClose ? "添加账号" : "登录" }}
+              {{ isAddingAccount ? "添加账号" : "登录" }}
             </div>
             <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">账号只保存在当前浏览器</div>
           </div>
@@ -211,6 +211,7 @@ import { useLoginFlow } from "@/composables/useLoginFlow";
 
 const props = defineProps({
   canClose: { type: Boolean, default: false },
+  isAddingAccount: { type: Boolean, default: false },
   notice: { type: String, default: "" },
   returnFocusTarget: { type: Object, default: null },
 });

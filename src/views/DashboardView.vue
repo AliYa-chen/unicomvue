@@ -223,10 +223,10 @@
       ></a>
     </main>
 
-    <AppFooter class="relative" @open-privacy="openPrivacy" />
     <LoginDialog
       v-model:open="loginOpen"
-      :can-close="hasAccounts"
+      can-close
+      :is-adding-account="hasAccounts"
       :notice="loginNotice"
       :return-focus-target="loginReturnFocusTarget"
       @authenticated="handleAuthenticated"
@@ -237,7 +237,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, shallowRef, useTemplateRef } from "vue";
+import { computed, nextTick, onMounted, ref, shallowRef, useTemplateRef, watch } from "vue";
 import {
   Camera,
   ChevronDown,
@@ -249,7 +249,6 @@ import {
   RefreshCw,
   UserRound,
 } from "@lucide/vue";
-import AppFooter from "@/components/app/AppFooter.vue";
 import AppToast from "@/components/app/AppToast.vue";
 import ThemeSelector from "@/components/app/ThemeSelector.vue";
 import LoginDialog from "@/components/auth/LoginDialog.vue";
@@ -265,7 +264,10 @@ import { useUsageDashboard } from "@/composables/useUsageDashboard";
 import { TOKEN_LONG_PRESS_MS } from "@/config/unicom";
 import { createAccountStore } from "@/stores/accountStore";
 
-const loginOpen = ref(false);
+const props = defineProps({
+  active: { type: Boolean, default: true },
+});
+const loginOpen = defineModel("loginOpen", { type: Boolean, default: false });
 const loginNotice = ref("");
 const moreMenuOpen = ref(false);
 const accountMenuOpen = ref(false);
@@ -451,7 +453,15 @@ function handleEscape() {
 
 onMounted(() => {
   accountStore.initializeAccounts();
-  dashboard.startAutoRefresh();
+  if (props.active) dashboard.startAutoRefresh();
+});
+
+watch(() => props.active, (active) => {
+  if (active) dashboard.startAutoRefresh();
+  else {
+    dashboard.stopAutoRefresh();
+    closeActionMenus();
+  }
 });
 </script>
 

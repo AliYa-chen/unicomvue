@@ -1,6 +1,6 @@
 # 余量面板
 
-基于 Vue 3 的中国联通套餐余量查询面板，用于查看流量、语音、短信、签约速率、QCI 及限速服务状态。
+基于 Vue 3 的中国联通套餐余量查询与网络测速面板，用于查看流量、语音、短信、签约速率、QCI、限速服务状态及当前网络速度。
 
 - [在线体验](https://net.2t.hk/)
 - [下载预构建静态文件](https://aliya-chen.github.io/unicomvue/dist.zip)
@@ -18,7 +18,11 @@
 - 每 30 秒自动刷新，并支持手动刷新或暂停
 - 支持浅色、深色及跟随系统主题
 - 支持动态 Canvas 背景和截图分享
+- 支持底部液态玻璃风格导航，在余量与测速页面之间切换
+- 支持多节点、自定义文件地址及 1–64 线程的持续下载测速，运行中可即时切换
 - 应用管理的账号状态保存在当前浏览器的 `localStorage`
+
+测速不需要联通账号。首次打开时若显示登录窗口，可以关闭后切换到“测速”。测速仅在点击开始后直接请求所选文件地址，不会向测速节点发送联通 Token 或测试日志；测试会持续消耗流量，直到手动停止或关闭页面。测速节点清单和持续下载思路参考 [NetworkPanel](https://github.com/ljxi/NetworkPanel)，工作线程与取消逻辑在本项目中重新实现；底部导航使用本地打包的 Liquid Glass Web Component，并在 WebGL 不可用时自动回退为普通导航。第三方来源与许可见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
 ## 技术栈
 
@@ -140,4 +144,4 @@ docker run --rm -p 8080:80 network-panel:local
 
 ## 许可证
 
-本项目使用 [MIT License](./LICENSE)。
+本项目使用 [MIT License](./LICENSE)。内置的第三方代码和数据清单分别遵循其自身许可，详见 [第三方声明](./THIRD_PARTY_NOTICES.md)。

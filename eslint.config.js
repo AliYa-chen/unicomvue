@@ -10,7 +10,11 @@ export default defineConfig([
     files: ["**/*.{vue,js,mjs,jsx}"],
   },
 
-  globalIgnores(["**/dist/**", "**/dist-ssr/**"]),
+  globalIgnores([
+    "**/dist/**",
+    "**/dist-ssr/**",
+    "src/vendor/liquid-glass/liquid-glass.js",
+  ]),
 
   {
     name: "app/browser-globals",

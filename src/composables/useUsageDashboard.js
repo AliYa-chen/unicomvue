@@ -164,7 +164,6 @@ export function useUsageDashboard(
     if (!token) {
       setStatus("未登录", "info");
       onRequireLogin("");
-      scheduleRefresh();
       return;
     }
 
@@ -275,6 +274,7 @@ export function useUsageDashboard(
 
   function startAutoRefresh() {
     autoRefreshEnabled = true;
+    if (paused.value) return;
     void refresh();
   }
 
@@ -308,5 +308,6 @@ export function useUsageDashboard(
     removeCurrentAccount,
     togglePaused,
     startAutoRefresh,
+    stopAutoRefresh,
   };
 }

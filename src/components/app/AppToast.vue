@@ -7,7 +7,7 @@
   >
     <div
       v-if="message"
-      class="pointer-events-none fixed inset-x-4 bottom-6 z-[70] flex justify-center"
+      class="pointer-events-none fixed inset-x-4 bottom-[calc(7.5rem+env(safe-area-inset-bottom))] z-[70] flex justify-center"
       role="status"
       aria-live="polite"
     >
