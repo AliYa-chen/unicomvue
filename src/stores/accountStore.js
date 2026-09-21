@@ -1,4 +1,11 @@
-import { computed, onScopeDispose, readonly, ref } from "vue";
+import {
+  computed,
+  inject,
+  onScopeDispose,
+  provide,
+  readonly,
+  ref,
+} from "vue";
 import { UNICOM_STORAGE_KEYS } from "@/config/unicom";
 import {
   accountDisplayName,
@@ -14,6 +21,8 @@ import {
   setStorageItem,
   setStorageJson,
 } from "@/services/storage";
+
+const accountStoreInjectionKey = Symbol("account-store");
 
 function createAccountId() {
   try {
@@ -323,4 +332,17 @@ export function createAccountStore() {
     updateActiveAccountMobile,
     updateAccountPackageName,
   };
+}
+
+export function provideAccountStore() {
+  const store = createAccountStore();
+  store.initializeAccounts();
+  provide(accountStoreInjectionKey, store);
+  return store;
+}
+
+export function useAccountStore() {
+  const store = inject(accountStoreInjectionKey, null);
+  if (!store) throw new Error("Account store provider is not available");
+  return store;
 }

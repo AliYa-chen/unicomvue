@@ -7,7 +7,7 @@
     <header class="speed-header">
       <PageHeading eyebrow="Continuous download" title="跑满了吗" />
       <div class="flex shrink-0 items-center gap-2">
-        <ThemeSelector compact />
+        <div class="hidden sm:block"><ThemeSelector compact /></div>
         <button
           ref="settingsButtonRef"
           type="button"
@@ -176,7 +176,6 @@
     @update:thread-count="setThreadCount"
     @save-custom-node="saveCustomNode"
     @delete-custom-node="removeCustomNode"
-    @open-privacy="openPrivacy"
   />
 </template>
 
@@ -196,7 +195,6 @@ import ThemeSelector from "@/components/app/ThemeSelector.vue";
 import NetworkStatusBar from "@/components/speed/NetworkStatusBar.vue";
 import SpeedSettingsDialog from "@/components/speed/SpeedSettingsDialog.vue";
 import { useNetworkStatus } from "@/composables/useNetworkStatus";
-import { usePrivacy } from "@/composables/usePrivacy";
 import { useSpeedTest } from "@/composables/useSpeedTest";
 
 const props = defineProps({ active: { type: Boolean, default: false } });
@@ -206,7 +204,6 @@ const speedValueRef = useTemplateRef("speedValueRef");
 const customLabel = ref("");
 const customUrl = ref("");
 const customError = ref("");
-const { openPrivacy } = usePrivacy();
 const {
   profile: networkProfile,
   latencyMs: networkLatencyMs,

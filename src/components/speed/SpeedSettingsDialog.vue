@@ -209,7 +209,6 @@
             持续测速会反复下载所选文件并消耗大量流量，只有手动点击“停止测速”才会结束。请勿用于未经授权的地址。
           </div>
 
-          <SettingsAboutSection class="mt-4" @open-privacy="openPrivacy" />
         </div>
       </section>
     </div>
@@ -228,7 +227,6 @@ import {
   Trash2,
   X,
 } from "@lucide/vue";
-import SettingsAboutSection from "@/components/app/SettingsAboutSection.vue";
 import LiquidGlassThreadSlider from "@/components/speed/LiquidGlassThreadSlider.vue";
 import { useDocumentScrollLock } from "@/composables/useDocumentScrollLock";
 import { useTheme } from "@/composables/useTheme";
@@ -260,14 +258,12 @@ const emit = defineEmits([
   "update:thread-count",
   "save-custom-node",
   "delete-custom-node",
-  "open-privacy",
 ]);
 const titleId = useId();
 const dialogRef = useTemplateRef("dialogRef");
 const closeButtonRef = useTemplateRef("closeButtonRef");
 const { isDark } = useTheme();
 let previouslyFocusedElement = null;
-let skipFocusRestore = false;
 useDocumentScrollLock(open);
 
 function close() {
@@ -310,13 +306,6 @@ function trapFocus(event) {
   }
 }
 
-async function openPrivacy() {
-  skipFocusRestore = true;
-  close();
-  await nextTick();
-  emit("open-privacy");
-}
-
 watch(open, async (isOpen) => {
   if (isOpen) {
     previouslyFocusedElement = document.activeElement instanceof HTMLElement
@@ -324,12 +313,6 @@ watch(open, async (isOpen) => {
       : null;
     await nextTick();
     if (open.value) closeButtonRef.value?.focus();
-    return;
-  }
-
-  if (skipFocusRestore) {
-    skipFocusRestore = false;
-    previouslyFocusedElement = null;
     return;
   }
 

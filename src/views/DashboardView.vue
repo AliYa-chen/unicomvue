@@ -1,30 +1,82 @@
 <template>
   <div
     class="flex flex-1 flex-col text-zinc-900 transition-colors duration-300 dark:text-zinc-100"
-    :inert="loginOpen || settingsOpen || undefined"
-    :aria-hidden="loginOpen || settingsOpen ? 'true' : undefined"
+    :inert="loginOpen || undefined"
+    :aria-hidden="loginOpen ? 'true' : undefined"
     @keydown.esc="handleEscape"
   >
     <header class="dashboard-header">
       <PageHeading eyebrow="Usage overview" title="套餐余量" />
 
       <nav class="flex min-w-0 shrink-0 items-center justify-end gap-2" aria-label="余量页面操作">
-        <ThemeSelector compact />
+        <div class="hidden sm:block"><ThemeSelector compact /></div>
         <button
-          ref="settingsButtonRef"
+          v-if="hasAccounts"
           type="button"
-          class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white/80 text-zinc-600 shadow-sm transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:border-white/10 dark:bg-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800"
-          aria-label="打开余量设置"
-          title="余量设置"
-          @click="settingsOpen = true"
+          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white/80 text-zinc-600 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 sm:hidden dark:border-white/10 dark:bg-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          :disabled="isLoading"
+          title="刷新套餐余量"
+          aria-label="刷新套餐余量"
+          @click="refreshUsage"
         >
-          <Settings2 :size="18" aria-hidden="true" />
+          <RefreshCw :size="17" :class="{ 'animate-spin': isLoading }" aria-hidden="true" />
         </button>
+        <button
+          v-if="hasAccounts"
+          type="button"
+          class="app-accent-solid inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 sm:hidden"
+          :disabled="isSharing || !ecsToken"
+          title="截图分享"
+          aria-label="截图分享"
+          @click="shareDashboard"
+        >
+          <LoaderCircle v-if="isSharing" :size="17" class="animate-spin" aria-hidden="true" />
+          <Camera v-else :size="17" aria-hidden="true" />
+        </button>
+        <div class="relative shrink-0">
+          <button
+            ref="accountMenuButtonRef"
+            type="button"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white/80 text-zinc-600 shadow-sm transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:border-white/10 dark:bg-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            aria-label="账号管理"
+            title="账号管理"
+            aria-haspopup="dialog"
+            :aria-expanded="accountMenuOpen"
+            :aria-controls="accountMenuOpen ? accountMenuId : undefined"
+            @click="accountMenuOpen = !accountMenuOpen"
+          >
+            <Settings2 :size="18" aria-hidden="true" />
+          </button>
+
+          <button
+            v-if="accountMenuOpen"
+            type="button"
+            class="fixed inset-0 z-40 cursor-default bg-transparent"
+            aria-label="关闭账号菜单"
+            tabindex="-1"
+            @click="closeAccountMenu"
+          ></button>
+          <div
+            v-if="accountMenuOpen"
+            :id="accountMenuId"
+            class="absolute top-12 right-0 z-[60] max-h-[min(70dvh,34rem)] w-72 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+            role="dialog"
+            aria-label="账号管理"
+          >
+            <AccountMenu
+              :accounts="accounts"
+              :current-id="activeAccountId"
+              @select="selectAccount"
+              @add="showAddAccount"
+              @remove="removeAccount"
+            />
+          </div>
+        </div>
       </nav>
     </header>
 
-    <main class="mx-auto max-w-4xl px-3 py-4 min-[360px]:px-4 min-[360px]:py-6 sm:py-8">
-      <div ref="captureTargetRef" class="relative space-y-6">
+    <main class="mx-auto w-full min-w-0 max-w-4xl px-3 py-4 min-[360px]:px-4 min-[360px]:py-6 sm:py-8">
+      <div ref="captureTargetRef" class="relative w-full min-w-0 space-y-6">
         <div
           v-if="watermarkVisible"
           class="capture-watermark"
@@ -34,14 +86,14 @@
 
         <section
           v-if="hasAccounts"
-          class="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm min-[360px]:p-4 sm:p-6 dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]"
+          class="w-full min-w-0 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm min-[360px]:p-4 sm:p-6 dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]"
         >
-          <div class="flex flex-col items-stretch gap-2 min-[400px]:flex-row min-[400px]:items-start min-[400px]:justify-between min-[400px]:gap-3">
-            <div class="min-w-0">
-              <h1 class="min-w-0 text-lg font-semibold tracking-tight min-[360px]:text-xl sm:text-2xl">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <h1 class="min-w-0 text-[clamp(0.75rem,4.2vw,1.125rem)] leading-tight font-semibold tracking-tight min-[400px]:text-xl sm:text-2xl">
                 <button
                   type="button"
-                  class="block max-w-full cursor-pointer touch-manipulation select-none truncate text-left text-zinc-900 transition-opacity active:opacity-60 dark:text-zinc-100"
+                  class="block max-w-full cursor-pointer touch-manipulation select-none whitespace-nowrap text-left text-zinc-900 transition-opacity active:opacity-60 dark:text-zinc-100"
                   :title="tokenButtonTitle"
                   aria-label="单击复制 onlin_token，双击复制 ecs_token"
                   @click="copyClickToken"
@@ -59,7 +111,7 @@
               </div>
             </div>
 
-            <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <div class="hidden shrink-0 flex-wrap items-center justify-end gap-2 sm:flex">
               <button
                 type="button"
                 class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium whitespace-nowrap text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
@@ -149,22 +201,6 @@
       @authenticated="handleAuthenticated"
       @open-privacy="openPrivacy"
     />
-    <DashboardSettingsDialog
-      v-model:open="settingsOpen"
-      :accounts="accounts"
-      :current-id="activeAccountId"
-      :save-accounts-in-browser="saveAccountsInBrowser"
-      :auto-refresh="autoRefresh"
-      :accent="accentId"
-      :return-focus-target="settingsButtonRef"
-      @select-account="selectAccount"
-      @add-account="showAddAccount"
-      @remove-account="removeAccount"
-      @update:save-accounts="setSaveAccountsInBrowser"
-      @update:auto-refresh="dashboard.setAutoRefresh"
-      @update:accent="setAccentTheme"
-      @open-privacy="openPrivacyFromSettings"
-    />
     <AppToast :message="toastMessage" :kind="toastKind" />
   </div>
 </template>
@@ -192,31 +228,30 @@ import AppToast from "@/components/app/AppToast.vue";
 import PageHeading from "@/components/app/PageHeading.vue";
 import ThemeSelector from "@/components/app/ThemeSelector.vue";
 import LoginDialog from "@/components/auth/LoginDialog.vue";
-import DashboardSettingsDialog from "@/components/dashboard/DashboardSettingsDialog.vue";
+import AccountMenu from "@/components/dashboard/AccountMenu.vue";
 import DashboardSummary from "@/components/dashboard/DashboardSummary.vue";
 import UsageGrid from "@/components/dashboard/UsageGrid.vue";
-import { useAccentTheme } from "@/composables/useAccentTheme";
 import { usePrivacy } from "@/composables/usePrivacy";
 import { useScreenshotShare } from "@/composables/useScreenshotShare";
 import { useTheme } from "@/composables/useTheme";
 import { useToast } from "@/composables/useToast";
 import { useUsageDashboard } from "@/composables/useUsageDashboard";
-import { createAccountStore } from "@/stores/accountStore";
+import { useAccountStore } from "@/stores/accountStore";
 
 const props = defineProps({
   active: { type: Boolean, default: true },
 });
 const loginOpen = defineModel("loginOpen", { type: Boolean, default: false });
-const settingsOpen = defineModel("settingsOpen", { type: Boolean, default: false });
 const loginNotice = ref("");
+const accountMenuOpen = ref(false);
+const accountMenuId = "dashboard-account-menu";
 const captureTargetRef = useTemplateRef("captureTargetRef");
 const downloadLinkRef = useTemplateRef("downloadLinkRef");
-const settingsButtonRef = useTemplateRef("settingsButtonRef");
+const accountMenuButtonRef = useTemplateRef("accountMenuButtonRef");
 const loggedOutLoginButtonRef = useTemplateRef("loggedOutLoginButtonRef");
 const loginReturnFocusTarget = shallowRef(null);
 
-const accountStore = createAccountStore();
-accountStore.initializeAccounts();
+const accountStore = useAccountStore();
 const {
   accounts,
   activeAccountId,
@@ -225,10 +260,8 @@ const {
   onlinToken,
   hasAccounts,
   saveAccountsInBrowser,
-  setSaveAccountsInBrowser,
 } = accountStore;
 const { isDark } = useTheme();
-const { accentId, setAccentTheme } = useAccentTheme();
 const { openPrivacy } = usePrivacy();
 const { message: toastMessage, kind: toastKind, showToast } = useToast();
 
@@ -251,7 +284,6 @@ const {
   usageCards,
   packageName,
   hasLimitService,
-  autoRefresh,
   hasLoaded,
 } = dashboard;
 
@@ -281,9 +313,9 @@ const TOKEN_SINGLE_CLICK_DELAY_MS = 320;
 let tokenSingleClickTimer = null;
 
 function showAddAccount() {
-  loginReturnFocusTarget.value = settingsButtonRef.value;
+  loginReturnFocusTarget.value = accountMenuButtonRef.value;
   loginNotice.value = "";
-  settingsOpen.value = false;
+  accountMenuOpen.value = false;
   void nextTick(() => { loginOpen.value = true; });
 }
 
@@ -305,16 +337,21 @@ async function handleAuthenticated(payload) {
   dashboard.setStatus("登录成功，正在查询...", "ok");
   void dashboard.refresh();
   await nextTick();
-  settingsButtonRef.value?.focus({ preventScroll: true });
+  accountMenuButtonRef.value?.focus({ preventScroll: true });
 }
 
 function selectAccount(accountId) {
-  settingsOpen.value = false;
+  accountMenuOpen.value = false;
   dashboard.selectAccount(accountId);
 }
 
 function removeAccount() {
+  accountMenuOpen.value = false;
   dashboard.removeCurrentAccount();
+}
+
+function closeAccountMenu() {
+  accountMenuOpen.value = false;
 }
 
 function refreshUsage() {
@@ -324,12 +361,6 @@ function refreshUsage() {
 async function shareDashboard() {
   await nextTick();
   await shareScreenshot();
-}
-
-async function openPrivacyFromSettings() {
-  settingsOpen.value = false;
-  await nextTick();
-  openPrivacy();
 }
 
 function copyOnlinToken() {
@@ -377,6 +408,7 @@ function copyDoubleClickToken() {
 
 function handleEscape() {
   if (loginOpen.value) loginOpen.value = false;
+  else if (accountMenuOpen.value) closeAccountMenu();
 }
 
 onMounted(() => {
@@ -391,7 +423,7 @@ watch(() => props.active, (active) => {
   if (active) dashboard.startAutoRefresh();
   else {
     dashboard.stopAutoRefresh();
-    settingsOpen.value = false;
+    accountMenuOpen.value = false;
   }
 });
 </script>

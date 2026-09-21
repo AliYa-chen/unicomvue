@@ -1,5 +1,28 @@
 <template>
-  <div class="mt-2 flex flex-wrap gap-1 text-[11px] min-[360px]:mt-3 min-[360px]:gap-2 min-[360px]:text-xs">
+  <div class="mt-2 flex flex-wrap gap-1.5 text-[11px] sm:hidden">
+      <span v-if="currentAccountLabel" class="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 font-medium text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">
+        <UserRound :size="13" class="shrink-0" aria-hidden="true" />
+        <span class="truncate">{{ currentAccountLabel }}</span>
+      </span>
+      <span class="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" role="status">
+        <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="dotClass" aria-hidden="true"></span>
+        <span class="truncate" :title="statusText">{{ statusText }}</span>
+      </span>
+      <span class="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-1 whitespace-nowrap text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+        速率：<span class="font-semibold text-zinc-800 dark:text-zinc-100">{{ signedRate }}</span>
+      </span>
+      <span class="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-1 whitespace-nowrap text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+        QCI：<span class="font-semibold text-zinc-800 dark:text-zinc-100">{{ qciLevel }}</span>
+      </span>
+      <span
+        v-if="hasLimitService"
+        class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 font-semibold whitespace-nowrap text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
+        title="检测到限速服务(50027)"
+        aria-label="检测到限速服务(50027)"
+      >限速服务</span>
+  </div>
+
+  <div class="mt-3 hidden flex-wrap gap-2 text-xs sm:flex">
     <span
       v-if="currentAccountLabel"
       class="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-indigo-50 px-2 py-1 font-medium whitespace-nowrap text-indigo-700 min-[360px]:px-3 lg:hidden dark:bg-indigo-950/50 dark:text-indigo-300"

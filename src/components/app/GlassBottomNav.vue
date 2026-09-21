@@ -37,7 +37,7 @@ import {
   useTemplateRef,
   watch,
 } from "vue";
-import { ChartPie, Gauge } from "@lucide/vue";
+import { ChartPie, Gauge, SlidersHorizontal } from "@lucide/vue";
 import { useTheme } from "@/composables/useTheme";
 import {
   createLiquidGlassMask,
@@ -49,7 +49,6 @@ import {
   loadLiquidGlass,
 } from "@/vendor/liquid-glass/loadLiquidGlass";
 
-const TAB_VALUES = ["usage", "speed"];
 const TABS = [
   {
     value: "usage",
@@ -65,7 +64,15 @@ const TABS = [
     icon: "m20.38 8.57-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44z M10.59 15.41a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z",
     viewport: 24,
   },
+  {
+    value: "settings",
+    label: "设置",
+    component: SlidersHorizontal,
+    icon: "M10 6h9v2h-9z M10 7a3 3 0 1 1-6 0a3 3 0 1 1 6 0 M8.5 7a1.5 1.5 0 1 0-3 0a1.5 1.5 0 1 0 3 0 M5 16h9v2H5z M20 17a3 3 0 1 1-6 0a3 3 0 1 1 6 0 M18.5 17a1.5 1.5 0 1 0-3 0a1.5 1.5 0 1 0 3 0",
+    viewport: 24,
+  },
 ];
+const TAB_VALUES = TABS.map(({ value }) => value);
 const ENGINE_TABS = [
   TABS.map(({ icon, label, viewport }) => ({ icon, label, viewport })),
 ];
@@ -82,7 +89,7 @@ const props = defineProps({
   activeTab: {
     type: String,
     required: true,
-    validator: (value) => ["usage", "speed"].includes(value),
+    validator: (value) => ["usage", "speed", "settings"].includes(value),
   },
 });
 const emit = defineEmits(["change"]);
@@ -348,7 +355,7 @@ onBeforeUnmount(() => {
   z-index: 2;
   inset: 0 4px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   pointer-events: auto;
 }
 .glass-bottom-nav__tab {
@@ -386,7 +393,7 @@ onBeforeUnmount(() => {
 .is-fallback .glass-bottom-nav__controls::before {
   position: absolute;
   inset: 4px auto 4px 4px;
-  width: calc((100% - 8px) / 2);
+  width: calc((100% - 8px) / 3);
   border-radius: 999px;
   background: rgb(255 255 255 / 72%);
   box-shadow: 0 3px 12px rgb(48 50 85 / 13%);

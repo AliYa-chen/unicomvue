@@ -1,5 +1,5 @@
-import { onScopeDispose, readonly, ref } from "vue";
-import { UNICOM_REFRESH_INTERVAL_MS, UNICOM_STORAGE_KEYS } from "@/config/unicom";
+import { onScopeDispose, readonly, ref, watch } from "vue";
+import { UNICOM_REFRESH_INTERVAL_MS } from "@/config/unicom";
 import { accountDisplayName } from "@/domain/accounts";
 import {
   buildCardsFromOcs,
@@ -12,7 +12,7 @@ import {
   fetchQciData,
   fetchUsage,
 } from "@/services/unicomApi";
-import { getStorageItem, setStorageItem } from "@/services/storage";
+import { useUsagePreferences } from "@/composables/useUsagePreferences";
 
 function getAccountFailure(data, status = 0) {
   if (data?.code === "BLACKLIST" || String(data?.raw ?? "") === "999997") {
@@ -72,9 +72,9 @@ export function useUsageDashboard(
   const usageCards = ref([]);
   const packageName = ref("");
   const hasLimitService = ref(false);
-  const autoRefresh = ref(
-    getStorageItem(UNICOM_STORAGE_KEYS.autoRefreshPreference, "true") !== "false",
-  );
+  const {
+    autoRefresh,
+  } = useUsagePreferences();
   const hasLoaded = ref(false);
 
   let disposed = false;
@@ -278,17 +278,6 @@ export function useUsageDashboard(
     return removed;
   }
 
-  function setAutoRefresh(enabled) {
-    autoRefresh.value = Boolean(enabled);
-    setStorageItem(
-      UNICOM_STORAGE_KEYS.autoRefreshPreference,
-      autoRefresh.value ? "true" : "false",
-    );
-    setStatus(autoRefresh.value ? "自动刷新已开启" : "自动刷新已关闭", "info");
-    scheduleRefresh();
-    return autoRefresh.value;
-  }
-
   function startAutoRefresh() {
     autoRefreshEnabled = true;
     if (!accountStore.ecsToken.value) {
@@ -305,6 +294,11 @@ export function useUsageDashboard(
     abortRefresh();
   }
 
+  watch(autoRefresh, (enabled) => {
+    setStatus(enabled ? "自动刷新已开启" : "自动刷新已关闭", "info");
+    scheduleRefresh();
+  });
+
   onScopeDispose(() => {
     disposed = true;
     stopAutoRefresh();
@@ -320,14 +314,12 @@ export function useUsageDashboard(
     usageCards: readonly(usageCards),
     packageName: readonly(packageName),
     hasLimitService: readonly(hasLimitService),
-    autoRefresh: readonly(autoRefresh),
     hasLoaded: readonly(hasLoaded),
     setStatus,
     resetDashboard,
     refresh,
     selectAccount,
     removeCurrentAccount,
-    setAutoRefresh,
     startAutoRefresh,
     stopAutoRefresh,
   };

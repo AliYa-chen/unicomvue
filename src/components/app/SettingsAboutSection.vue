@@ -1,5 +1,5 @@
 <template>
-  <section class="rounded-xl border border-zinc-200 p-3 dark:border-zinc-700" aria-labelledby="about-settings-title">
+  <section class="rounded-2xl border border-zinc-200 bg-white/82 p-4 shadow-sm dark:border-white/10 dark:bg-zinc-900/58" aria-labelledby="about-settings-title">
     <div class="flex items-center justify-between gap-3">
       <h3 id="about-settings-title" class="text-sm font-semibold">关于</h3>
       <span class="text-[11px] text-zinc-400 dark:text-zinc-500">© {{ year }} BinGo Tools</span>
