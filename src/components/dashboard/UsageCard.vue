@@ -1,6 +1,6 @@
 <template>
-  <article class="flex h-full min-w-0 flex-col rounded-2xl border border-zinc-200 bg-white p-5 hover:shadow-sm dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]">
-    <div class="flex min-w-0 items-start justify-between gap-4">
+  <article class="flex h-full min-w-0 flex-col rounded-2xl border border-zinc-200 bg-white p-4 hover:shadow-sm min-[360px]:p-5 dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]">
+    <div class="flex min-w-0 items-start justify-between gap-3 min-[360px]:gap-4">
       <div class="min-w-0 flex-1 [overflow-wrap:anywhere]">
         <div class="min-w-0 truncate whitespace-nowrap text-sm font-medium text-zinc-700 dark:text-zinc-300">
           {{ card.title }} {{ card.subtitle || "" }}
@@ -13,7 +13,7 @@
         </div>
         <div
           class="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
-          :class="card.hideCanUseLine ? 'invisible' : ''"
+          :class="card.hideCanUseLine ? 'hidden min-[360px]:block min-[360px]:invisible' : ''"
         >
           {{ card.canUseText || "" }}
         </div>
@@ -22,7 +22,7 @@
           <span
             v-for="badge in card.badges"
             :key="badge.key"
-            class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]"
+            class="inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] whitespace-nowrap [overflow-wrap:normal]"
             :class="badgeClass(badge.tone)"
           >
             {{ badge.text }}

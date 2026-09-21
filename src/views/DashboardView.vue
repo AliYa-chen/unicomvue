@@ -6,12 +6,7 @@
     @keydown.esc="handleEscape"
   >
     <header class="dashboard-header">
-      <div class="min-w-0">
-        <p class="text-[11px] font-semibold tracking-[0.18em] text-indigo-500 uppercase dark:text-indigo-300">
-          Usage overview
-        </p>
-        <h1 class="mt-0.5 text-xl font-semibold tracking-tight sm:text-2xl">套餐余量</h1>
-      </div>
+      <PageHeading eyebrow="Usage overview" title="套餐余量" />
 
       <nav class="flex min-w-0 shrink-0 items-center justify-end gap-2" aria-label="余量页面操作">
         <ThemeSelector compact />
@@ -28,7 +23,7 @@
       </nav>
     </header>
 
-    <main class="mx-auto max-w-4xl px-4 py-6 sm:py-8">
+    <main class="mx-auto max-w-4xl px-3 py-4 min-[360px]:px-4 min-[360px]:py-6 sm:py-8">
       <div ref="captureTargetRef" class="relative space-y-6">
         <div
           v-if="watermarkVisible"
@@ -39,11 +34,11 @@
 
         <section
           v-if="hasAccounts"
-          class="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6 dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]"
+          class="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm min-[360px]:p-4 sm:p-6 dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]"
         >
-          <div class="flex flex-col items-stretch gap-3 min-[360px]:flex-row min-[360px]:items-start min-[360px]:justify-between">
+          <div class="flex flex-col items-stretch gap-2 min-[400px]:flex-row min-[400px]:items-start min-[400px]:justify-between min-[400px]:gap-3">
             <div class="min-w-0">
-              <h1 class="min-w-0 text-xl font-semibold tracking-tight sm:text-2xl">
+              <h1 class="min-w-0 text-lg font-semibold tracking-tight min-[360px]:text-xl sm:text-2xl">
                 <button
                   type="button"
                   class="block max-w-full cursor-pointer touch-manipulation select-none truncate text-left text-zinc-900 transition-opacity active:opacity-60 dark:text-zinc-100"
@@ -57,7 +52,7 @@
                 </button>
               </h1>
 
-              <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              <div class="mt-1 hidden text-xs text-zinc-500 min-[400px]:block dark:text-zinc-400">
                 <span class="font-medium text-zinc-700 dark:text-zinc-300">余量 / 用量</span>
                 <span class="mx-2 text-zinc-300 dark:text-zinc-700">·</span>
                 <span>单击复制 onlin_token · 双击复制 ecs_token</span>
@@ -67,25 +62,25 @@
             <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
-                class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium whitespace-nowrap text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 :disabled="isLoading"
                 aria-label="刷新套餐余量"
                 @click="refreshUsage"
               >
-                <RefreshCw :size="17" :class="{ 'animate-spin': isLoading }" aria-hidden="true" />
-                <span class="hidden sm:inline">刷新</span>
+                <RefreshCw :size="17" class="shrink-0" :class="{ 'animate-spin': isLoading }" aria-hidden="true" />
+                <span class="hidden whitespace-nowrap sm:inline">刷新</span>
               </button>
               <button
                 type="button"
-                class="app-accent-solid inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
+                class="app-accent-solid inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium whitespace-nowrap transition disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
                 :disabled="isSharing || !ecsToken"
                 title="截图分享"
                 aria-label="截图分享"
                 @click="shareDashboard"
               >
-                <LoaderCircle v-if="isSharing" :size="17" class="animate-spin" aria-hidden="true" />
-                <Camera v-else :size="17" aria-hidden="true" />
-                <span class="hidden sm:inline">截图分享</span>
+                <LoaderCircle v-if="isSharing" :size="17" class="shrink-0 animate-spin" aria-hidden="true" />
+                <Camera v-else :size="17" class="shrink-0" aria-hidden="true" />
+                <span class="hidden whitespace-nowrap sm:inline">截图分享</span>
               </button>
             </div>
           </div>
@@ -194,6 +189,7 @@ import {
   UserRound,
 } from "@lucide/vue";
 import AppToast from "@/components/app/AppToast.vue";
+import PageHeading from "@/components/app/PageHeading.vue";
 import ThemeSelector from "@/components/app/ThemeSelector.vue";
 import LoginDialog from "@/components/auth/LoginDialog.vue";
 import DashboardSettingsDialog from "@/components/dashboard/DashboardSettingsDialog.vue";
@@ -409,6 +405,10 @@ watch(() => props.active, (active) => {
   justify-content: space-between;
   gap: 1rem;
   padding-top: clamp(1rem, 3dvh, 2rem);
+}
+
+@media (max-width: 359px) {
+  .dashboard-header { gap: 0.5rem; }
 }
 
 </style>

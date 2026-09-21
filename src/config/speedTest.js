@@ -1,5 +1,3 @@
-// Built-in download targets follow NetworkPanel's nodes.json.
-// The upstream MIT license is retained at third_party/networkpanel/LICENSE.
 export const SPEED_TEST_NODE_GROUPS = Object.freeze([
   Object.freeze({
     label: "运营商",
@@ -41,6 +39,8 @@ export const SPEED_TEST_DEFAULT_URL = SPEED_TEST_NODE_GROUPS[0].options[0].value
 export const SPEED_TEST_DEFAULT_THREADS = 8;
 export const SPEED_TEST_MIN_THREADS = 1;
 export const SPEED_TEST_MAX_THREADS = 64;
+export const SPEED_TEST_LIVE_INTERVAL_MS = 100;
+export const SPEED_TEST_SPEED_WINDOW_MS = 800;
 export const SPEED_TEST_SAMPLE_INTERVAL_MS = 500;
 export const SPEED_TEST_RETRY_DELAY_MS = 800;
 export const SPEED_TEST_MAX_SAMPLES = 72;

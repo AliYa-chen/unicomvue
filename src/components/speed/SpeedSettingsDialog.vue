@@ -82,7 +82,7 @@
               <div class="min-w-0 flex-1">
                 <h3 id="speed-threads-title" class="text-sm font-semibold">并发线程</h3>
                 <p class="mt-1 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-                  运行中调整会立即增减下载连接。
+                  拖动时实时调整下载任务。
                 </p>
               </div>
               <label class="relative shrink-0">
@@ -125,6 +125,9 @@
                 {{ count }} 线程
               </button>
             </div>
+            <p class="mt-3 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
+              实际同时传输数受浏览器与节点协议限制；HTTP/1.1 单域名通常约为 6 条，其余任务会在浏览器中等待连接。
+            </p>
           </section>
 
           <section class="speed-settings-card mt-4" aria-labelledby="custom-node-title">

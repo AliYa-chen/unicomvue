@@ -5,12 +5,7 @@
     :aria-hidden="settingsOpen ? 'true' : undefined"
   >
     <header class="speed-header">
-      <div class="min-w-0">
-        <p class="text-[11px] font-semibold tracking-[0.18em] text-indigo-500 uppercase dark:text-indigo-300">
-          Continuous download
-        </p>
-        <h1 class="mt-0.5 text-xl font-semibold tracking-tight sm:text-2xl">持续测速</h1>
-      </div>
+      <PageHeading eyebrow="Continuous download" title="持续测速" />
       <div class="flex shrink-0 items-center gap-2">
         <ThemeSelector compact />
         <button
@@ -56,8 +51,18 @@
           {{ statusDescription }}
         </p>
 
+        <NetworkStatusBar
+          class="speed-network-status"
+          :profile="networkProfile"
+          :latency-ms="networkLatencyMs"
+          :loading="networkLoading"
+          :failed="networkFailed"
+          :offline="networkOffline"
+          @retry="refreshNetworkStatus"
+        />
+
         <div class="speed-chart-wrap">
-          <div class="mb-2 flex items-center justify-between gap-3">
+          <div class="speed-chart-heading mb-2 flex items-center justify-between gap-3">
             <h2 class="text-sm font-semibold">测速曲线</h2>
             <span class="truncate text-xs text-zinc-500 dark:text-zinc-400">下载 Mbps</span>
           </div>
@@ -120,7 +125,7 @@
             <dd>{{ formatBytes(totalBytes) }}</dd>
           </div>
           <div>
-            <dt>线程</dt>
+            <dt>传输 / 配置</dt>
             <dd>{{ connectedThreads }}/{{ threadCount }}</dd>
           </div>
         </dl>
@@ -169,8 +174,11 @@ import {
   watch,
 } from "vue";
 import { Play, Settings2, Square } from "@lucide/vue";
+import PageHeading from "@/components/app/PageHeading.vue";
 import ThemeSelector from "@/components/app/ThemeSelector.vue";
+import NetworkStatusBar from "@/components/speed/NetworkStatusBar.vue";
 import SpeedSettingsDialog from "@/components/speed/SpeedSettingsDialog.vue";
+import { useNetworkStatus } from "@/composables/useNetworkStatus";
 import { usePrivacy } from "@/composables/usePrivacy";
 import { useSpeedTest } from "@/composables/useSpeedTest";
 
@@ -182,6 +190,14 @@ const customLabel = ref("");
 const customUrl = ref("");
 const customError = ref("");
 const { openPrivacy } = usePrivacy();
+const {
+  profile: networkProfile,
+  latencyMs: networkLatencyMs,
+  loading: networkLoading,
+  failed: networkFailed,
+  offline: networkOffline,
+  refresh: refreshNetworkStatus,
+} = useNetworkStatus();
 let speedValueResizeObserver = null;
 let speedValueFitFrame = 0;
 
@@ -200,6 +216,7 @@ const {
   samples,
   connectionError,
   connectedThreads,
+  startedThreads,
   setThreadCount,
   addCustomNode,
   removeCustomNode,
@@ -228,7 +245,9 @@ const phaseLabel = computed(() => {
 const statusDescription = computed(() => {
   if (connectionError.value) return `${connectionError.value}，正在自动重试…`;
   if (isRunning.value) {
-    return `${selectedNodeLabel.value} · ${connectedThreads.value}/${threadCount.value} 线程已连接`;
+    const waitingThreads = Math.max(0, startedThreads.value - connectedThreads.value);
+    const waitingLabel = waitingThreads ? ` · ${waitingThreads} 条等待` : "";
+    return `${selectedNodeLabel.value} · ${connectedThreads.value} 条传输${waitingLabel}`;
   }
   if (phase.value === "stopped") return `已停止，本次共下载 ${formatBytes(totalBytes.value)}`;
   return "开始后会持续下载，只有手动停止才会结束。";
@@ -314,7 +333,7 @@ function openSettings() {
   settingsOpen.value = true;
 }
 
-watch(formattedSpeed, async () => {
+watch(() => formattedSpeed.value.length, async () => {
   await nextTick();
   scheduleSpeedValueFit();
 }, { flush: "post" });
@@ -434,6 +453,8 @@ onBeforeUnmount(() => {
 }
 .speed-description.is-error { color: var(--color-rose-600); }
 
+.speed-network-status { margin-top: clamp(0.55rem, 1.4dvh, 0.85rem); }
+
 .speed-chart-wrap { margin-top: clamp(0.75rem, 1.8dvh, 1.15rem); }
 
 .speed-chart {
@@ -520,14 +541,40 @@ onBeforeUnmount(() => {
   to { transform: translateX(240%); }
 }
 
-@media (max-height: 700px) and (max-width: 640px) {
-  .speed-page { padding-top: 0.65rem; }
-  .speed-header p { display: none; }
-  .speed-main { margin-top: 0.45rem; }
-  .speed-gauge { width: min(10.5rem, 27dvh); }
-  .speed-description, .speed-chart-wrap, .speed-status, .speed-summary, .speed-action { margin-top: 0.5rem; }
-  .speed-chart { height: min(6.5rem, 16dvh); }
+@media (max-width: 640px) {
+  .speed-page {
+    height: calc(
+      100dvh
+      - env(safe-area-inset-top, 0px)
+      - env(safe-area-inset-bottom, 0px)
+    );
+    min-height: 0;
+    overflow: clip;
+    padding-top: clamp(1rem, 3dvh, 2rem);
+    padding-inline: 0.75rem;
+  }
+  .speed-header { width: min(calc(100% - 0.5rem), 56rem); }
+  .speed-main { margin-top: clamp(0.25rem, 1.5dvh, 0.75rem); }
+  .speed-gauge { width: clamp(9rem, 22dvh, 12rem); }
+  .speed-description, .speed-network-status, .speed-chart-wrap, .speed-summary, .speed-action { margin-top: 0.5rem; }
+  .speed-chart-heading { margin-bottom: 0.25rem; }
+  .speed-chart { height: clamp(6rem, 11dvh, 7rem); }
+  .speed-status { display: none; }
+  .speed-summary { padding-block: 0.45rem; }
   .speed-action { min-height: 2.75rem; }
+}
+
+@media (max-width: 359px) {
+  .speed-header { gap: 0.5rem; }
+}
+
+@media (max-width: 640px) and (max-height: 700px) {
+  .speed-main { margin-top: 0.25rem; }
+  .speed-gauge { width: min(9.25rem, 22dvh); }
+  .speed-description, .speed-network-status, .speed-chart-wrap, .speed-summary, .speed-action { margin-top: 0.25rem; }
+  .speed-chart { height: min(4.5rem, 12dvh); }
+  .speed-summary { padding-block: 0.3rem; }
+  .speed-action { min-height: 2.5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

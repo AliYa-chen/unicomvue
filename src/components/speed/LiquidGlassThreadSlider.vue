@@ -57,6 +57,9 @@ let syncingFromVue = false;
 let mountGeneration = 0;
 let assetRefreshFrame = 0;
 let engineResizeObserver = null;
+let liveDragFrame = 0;
+let liveDragPointerId = null;
+let dragging = false;
 
 function clampValue(value) {
   const minimum = Math.min(props.min, props.max);
@@ -93,10 +96,50 @@ function syncAccessibility() {
 
 function syncSliderValue() {
   if (!glassElement?.setState) return;
-  syncingFromVue = true;
   syncAccessibility();
+  if (dragging) return;
+  syncingFromVue = true;
   glassElement.setState({ sliderValue: toSliderValue(normalizedValue.value) });
   queueMicrotask(() => { syncingFromVue = false; });
+}
+
+function readLiveDragValue() {
+  liveDragFrame = 0;
+  if (!dragging || !glassElement) return;
+  const gesture = glassElement._gestures?.get?.(liveDragPointerId);
+  const pressedId = gesture?.pressedId;
+  if (!["slider1-track", "slider1-knob"].includes(pressedId)) return;
+
+  const fraction = glassElement._renderer?.gooseTglTargetGet?.("slider1");
+  if (Number.isFinite(fraction)) updateValue(fromSliderValue(fraction * 100));
+}
+
+function scheduleLiveDragValue() {
+  if (liveDragFrame) return;
+  liveDragFrame = requestAnimationFrame(readLiveDragValue);
+}
+
+function onPointerDown(event) {
+  if (!glassReady.value) return;
+  liveDragPointerId = event.pointerId;
+  dragging = true;
+  window.addEventListener("pointermove", scheduleLiveDragValue, { passive: true });
+  window.addEventListener("pointerup", finishLiveDrag, { once: true, capture: true });
+  window.addEventListener("pointercancel", finishLiveDrag, { once: true, capture: true });
+}
+
+function finishLiveDrag() {
+  const wasDragging = dragging;
+  window.removeEventListener("pointermove", scheduleLiveDragValue);
+  window.removeEventListener("pointerup", finishLiveDrag, true);
+  window.removeEventListener("pointercancel", finishLiveDrag, true);
+  if (liveDragFrame) cancelAnimationFrame(liveDragFrame);
+  liveDragFrame = 0;
+  if (!wasDragging) return;
+  readLiveDragValue();
+  dragging = false;
+  liveDragPointerId = null;
+  requestAnimationFrame(syncSliderValue);
 }
 
 function onGlassStateChange(event) {
@@ -105,6 +148,7 @@ function onGlassStateChange(event) {
   if (!Number.isFinite(rawValue)) return;
   const nextValue = fromSliderValue(rawValue);
   if (nextValue !== normalizedValue.value) emit("update:modelValue", nextValue);
+  if (dragging) return;
 
   const snappedValue = toSliderValue(nextValue);
   if (Math.abs(snappedValue - rawValue) <= 0.001) return;
@@ -205,6 +249,7 @@ async function mountGlassElement() {
     host.replaceChildren(element);
     glassCanvas = element.shadowRoot?.querySelector("canvas") ?? null;
     glassCanvas?.addEventListener("webglcontextlost", onWebGlContextLost, { once: true });
+    glassCanvas?.addEventListener("pointerdown", onPointerDown);
     syncAccessibility();
     element.setState({ sliderValue: toSliderValue(normalizedValue.value) });
     queueMicrotask(() => { syncingFromVue = false; });
@@ -228,7 +273,9 @@ function destroyGlassElement() {
   mountGeneration += 1;
   glassReady.value = false;
   syncingFromVue = false;
+  finishLiveDrag();
   glassCanvas?.removeEventListener("webglcontextlost", onWebGlContextLost);
+  glassCanvas?.removeEventListener("pointerdown", onPointerDown);
   glassCanvas = null;
   if (!glassElement) return;
   glassElement.removeEventListener("lg-statechange", onGlassStateChange);

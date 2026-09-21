@@ -9,12 +9,14 @@ import {
 import {
   SPEED_TEST_DEFAULT_THREADS,
   SPEED_TEST_DEFAULT_URL,
+  SPEED_TEST_LIVE_INTERVAL_MS,
   SPEED_TEST_MAX_SAMPLES,
   SPEED_TEST_MAX_THREADS,
   SPEED_TEST_MIN_THREADS,
   SPEED_TEST_NODE_GROUPS,
   SPEED_TEST_RETRY_DELAY_MS,
   SPEED_TEST_SAMPLE_INTERVAL_MS,
+  SPEED_TEST_SPEED_WINDOW_MS,
   SPEED_TEST_STORAGE_KEYS,
 } from "@/config/speedTest";
 import {
@@ -190,16 +192,18 @@ export function useSpeedTest() {
   const samples = ref([]);
   const connectionError = ref("");
   const connectedThreads = ref(0);
+  const startedThreads = ref(0);
 
   const workerEntries = new Map();
   const streamingWorkers = new Map();
   const workerErrors = new Map();
   let runGeneration = 0;
   let workerEpoch = 0;
-  let sampleTimer = null;
+  let liveTimer = null;
+  let chartTimer = null;
+  let rawTotalBytes = 0;
+  let speedCheckpoints = [];
   let startedAt = 0;
-  let previousSampleAt = 0;
-  let previousSampleBytes = 0;
 
   const nodeGroups = computed(() => {
     if (!customNodes.value.length) return SPEED_TEST_NODE_GROUPS;
@@ -215,6 +219,7 @@ export function useSpeedTest() {
   });
 
   function syncWorkerCounts() {
+    startedThreads.value = workerEntries.size;
     connectedThreads.value = streamingWorkers.size;
     if (streamingWorkers.size > 0) connectionError.value = "";
     else if (workerErrors.size > 0) {
@@ -251,8 +256,11 @@ export function useSpeedTest() {
           },
           onChunk(byteLength) {
             if (!isCurrentWorker()) return;
-            totalBytes.value += byteLength;
-            if (phase.value === "starting") phase.value = "running";
+            if (phase.value === "starting") {
+              speedCheckpoints = [{ time: performance.now(), bytes: rawTotalBytes }];
+              phase.value = "running";
+            }
+            rawTotalBytes += byteLength;
           },
         });
         if (!isCurrentWorker()) break;
@@ -313,36 +321,69 @@ export function useSpeedTest() {
     samples.value = [];
     connectionError.value = "";
     startedAt = performance.now();
-    previousSampleAt = startedAt;
-    previousSampleBytes = 0;
+    rawTotalBytes = 0;
+    speedCheckpoints = [{ time: startedAt, bytes: 0 }];
   }
 
-  function recordSample() {
+  function publishLiveMeasurements(timestamp = performance.now()) {
     if (!isRunning.value) return;
-    const now = performance.now();
-    const duration = Math.max(now - previousSampleAt, 1);
-    const transferred = Math.max(totalBytes.value - previousSampleBytes, 0);
-    const speed = Math.round(((transferred * 8) / (duration * 1000)) * 100) / 100;
+    const now = Number.isFinite(timestamp) ? timestamp : performance.now();
+    const lastCheckpoint = speedCheckpoints.at(-1);
+    if (!lastCheckpoint || now > lastCheckpoint.time) {
+      speedCheckpoints.push({ time: now, bytes: rawTotalBytes });
+    } else {
+      lastCheckpoint.bytes = rawTotalBytes;
+    }
 
+    const cutoff = now - SPEED_TEST_SPEED_WINDOW_MS;
+    while (speedCheckpoints.length > 2 && speedCheckpoints[1].time <= cutoff) {
+      speedCheckpoints.shift();
+    }
+
+    const first = speedCheckpoints[0];
+    const second = speedCheckpoints[1];
+    let baselineTime = first?.time ?? now;
+    let baselineBytes = first?.bytes ?? rawTotalBytes;
+    if (first && second && first.time < cutoff && second.time > first.time) {
+      const ratio = Math.min(1, Math.max(0, (cutoff - first.time) / (second.time - first.time)));
+      baselineTime = cutoff;
+      baselineBytes = first.bytes + (second.bytes - first.bytes) * ratio;
+    }
+
+    const duration = Math.max(0, now - baselineTime);
+    const transferred = Math.max(0, rawTotalBytes - baselineBytes);
+    const speed = duration >= SPEED_TEST_LIVE_INTERVAL_MS
+      ? Math.round(((transferred * 8) / (duration * 1000)) * 100) / 100
+      : 0;
+
+    totalBytes.value = rawTotalBytes;
     currentMbps.value = speed;
-    peakMbps.value = Math.max(peakMbps.value, speed);
+    if (duration >= SPEED_TEST_SPEED_WINDOW_MS * 0.9) {
+      peakMbps.value = Math.max(peakMbps.value, speed);
+    }
     elapsedMs.value = Math.max(0, now - startedAt);
+  }
+
+  function recordChartSample() {
+    if (!isRunning.value) return;
     samples.value = [
       ...samples.value.slice(-(SPEED_TEST_MAX_SAMPLES - 1)),
-      { time: elapsedMs.value, mbps: speed },
+      { time: elapsedMs.value, mbps: currentMbps.value },
     ];
-    previousSampleAt = now;
-    previousSampleBytes = totalBytes.value;
   }
 
   function startSampling() {
-    clearInterval(sampleTimer);
-    sampleTimer = setInterval(recordSample, SPEED_TEST_SAMPLE_INTERVAL_MS);
+    clearInterval(liveTimer);
+    clearInterval(chartTimer);
+    liveTimer = setInterval(publishLiveMeasurements, SPEED_TEST_LIVE_INTERVAL_MS);
+    chartTimer = setInterval(recordChartSample, SPEED_TEST_SAMPLE_INTERVAL_MS);
   }
 
   function stopSampling() {
-    clearInterval(sampleTimer);
-    sampleTimer = null;
+    clearInterval(liveTimer);
+    clearInterval(chartTimer);
+    liveTimer = null;
+    chartTimer = null;
   }
 
   function start() {
@@ -365,7 +406,8 @@ export function useSpeedTest() {
 
   function stop() {
     if (!isRunning.value) return false;
-    recordSample();
+    publishLiveMeasurements();
+    recordChartSample();
     isRunning.value = false;
     runGeneration += 1;
     stopSampling();
@@ -377,9 +419,11 @@ export function useSpeedTest() {
   function restartForSelectedUrl() {
     if (!isRunning.value) return;
     abortWorkers();
+    stopSampling();
     resetMeasurements();
     phase.value = "starting";
     launchConfiguredWorkers();
+    startSampling();
   }
 
   function reconcileThreadCount() {
@@ -463,6 +507,7 @@ export function useSpeedTest() {
     samples: readonly(samples),
     connectionError: readonly(connectionError),
     connectedThreads: readonly(connectedThreads),
+    startedThreads: readonly(startedThreads),
     setThreadCount,
     addCustomNode,
     removeCustomNode,
