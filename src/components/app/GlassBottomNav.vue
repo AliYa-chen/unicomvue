@@ -44,6 +44,7 @@ import {
   createLiquidGlassWallpaper,
 } from "@/utils/liquidGlassWallpaper";
 import {
+  applyLiquidGlassMaxQuality,
   disposeLiquidGlassElement,
   loadLiquidGlass,
 } from "@/vendor/liquid-glass/loadLiquidGlass";
@@ -54,14 +55,14 @@ const TABS = [
     value: "usage",
     label: "余量",
     component: ChartPie,
-    icon: "M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z M21.21 15.89A10 10 0 1 1 8 2.83",
+    icon: "M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm1 2.07c3.61.45 6.48 3.33 6.93 6.93H13V4.07zM4 12c0-4.06 3.07-7.44 7-7.93v15.87c-3.93-.5-7-3.88-7-7.94zm9 7.93V13h6.93A8.002 8.002 0 0 1 13 19.93z",
     viewport: 24,
   },
   {
     value: "speed",
     label: "测速",
     component: Gauge,
-    icon: "M12 14 16 10 M3.34 19A10 10 0 1 1 20.66 19",
+    icon: "m20.38 8.57-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44z M10.59 15.41a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z",
     viewport: 24,
   },
 ];
@@ -103,6 +104,8 @@ let syncingFromVue = false;
 let engineConnected = false;
 let currentWallpaper = "";
 let mountGeneration = 0;
+let assetRefreshFrame = 0;
+let engineResizeObserver = null;
 
 function activeIndex() {
   return Math.max(0, TAB_VALUES.indexOf(props.activeTab));
@@ -122,6 +125,24 @@ function buildEngineAssets() {
     ),
     wallpaper: createLiquidGlassWallpaper(width, height, isDark.value),
   };
+}
+
+function refreshEngineAssets() {
+  assetRefreshFrame = 0;
+  if (!mounted) return;
+  const assets = buildEngineAssets();
+  engineMask.value = assets.mask;
+  currentWallpaper = assets.wallpaper;
+  if (!glassElement) return;
+  applyLiquidGlassMaxQuality(glassElement);
+  if (glassElement.getAttribute("wallpaper") !== currentWallpaper) {
+    glassElement.setAttribute("wallpaper", currentWallpaper);
+  }
+}
+
+function scheduleEngineAssetRefresh() {
+  if (assetRefreshFrame) cancelAnimationFrame(assetRefreshFrame);
+  assetRefreshFrame = requestAnimationFrame(refreshEngineAssets);
 }
 
 function syncEngineSelection() {
@@ -212,8 +233,7 @@ async function mountGlassElement() {
     engineMask.value = assets.mask;
     const element = document.createElement("liquid-glass");
     glassElement = element;
-    element.setAttribute("dpr", "2");
-    element.setAttribute("blur-tap-cap", "9");
+    applyLiquidGlassMaxQuality(element);
     element.setAttribute("corner-style", "1");
     element.setAttribute("wallpaper", currentWallpaper);
     element.toggleAttribute("dark", isDark.value);
@@ -264,11 +284,19 @@ watch(isDark, async () => {
 
 onMounted(() => {
   mounted = true;
+  if (typeof ResizeObserver !== "undefined" && glassHostRef.value) {
+    engineResizeObserver = new ResizeObserver(scheduleEngineAssetRefresh);
+    engineResizeObserver.observe(glassHostRef.value);
+  }
+  window.addEventListener("resize", scheduleEngineAssetRefresh, { passive: true });
   void mountGlassElement();
 });
 
 onBeforeUnmount(() => {
   mounted = false;
+  engineResizeObserver?.disconnect();
+  window.removeEventListener("resize", scheduleEngineAssetRefresh);
+  if (assetRefreshFrame) cancelAnimationFrame(assetRefreshFrame);
   destroyGlassElement();
 });
 </script>

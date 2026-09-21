@@ -1,4 +1,5 @@
 const LIQUID_GLASS_TAG = "liquid-glass";
+const MAX_BLUR_TAP_CAP = 33;
 
 let loadPromise;
 
@@ -34,6 +35,14 @@ export async function loadLiquidGlass() {
     });
 
   return loadPromise;
+}
+
+export function applyLiquidGlassMaxQuality(element) {
+  if (!element) return;
+  const deviceDpr = Number(globalThis.devicePixelRatio);
+  const dpr = Number.isFinite(deviceDpr) && deviceDpr > 0 ? deviceDpr : 1;
+  element.setAttribute("dpr", String(dpr));
+  element.setAttribute("blur-tap-cap", String(MAX_BLUR_TAP_CAP));
 }
 
 /**

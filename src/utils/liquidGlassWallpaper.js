@@ -88,6 +88,11 @@ function remember(cache, key, value) {
   return value;
 }
 
+function getNativeRenderScale() {
+  const deviceScale = Number(globalThis.devicePixelRatio);
+  return Number.isFinite(deviceScale) && deviceScale > 0 ? deviceScale : 1;
+}
+
 /**
  * Produce an opaque local backdrop for the vendored WebGL renderer.
  * Its context uses alpha:false, so transparency is approximated with the app
@@ -96,11 +101,11 @@ function remember(cache, key, value) {
 export function createLiquidGlassWallpaper(width, height, dark) {
   const safeWidth = Math.max(2, Math.round(width));
   const safeHeight = Math.max(2, Math.round(height));
-  const key = `${safeWidth}x${safeHeight}:${dark ? "dark" : "light"}`;
+  const scale = getNativeRenderScale();
+  const key = `${safeWidth}x${safeHeight}:${dark ? "dark" : "light"}:${scale}`;
   const cached = wallpaperCache.get(key);
   if (cached) return cached;
 
-  const scale = Math.min(globalThis.devicePixelRatio || 1, 2);
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(safeWidth * scale);
   canvas.height = Math.round(safeHeight * scale);
@@ -154,8 +159,7 @@ export function createLiquidGlassPlainWallpaper(width, height, dark, surface = "
 
   const safeWidth = Math.max(2, Math.round(width));
   const safeHeight = Math.max(2, Math.round(height));
-  const deviceScale = Number(globalThis.devicePixelRatio);
-  const scale = Math.min(Math.max(Number.isFinite(deviceScale) ? deviceScale : 1, 1), 2);
+  const scale = getNativeRenderScale();
   const lightColor = surface === "plain" ? "#ffffff" : "#fbfbfb";
   const color = dark ? PALETTES.dark.base : lightColor;
   const key = `${safeWidth}x${safeHeight}:${color}:${scale}`;
@@ -194,8 +198,7 @@ export function createLiquidGlassMask(
   const requestedHeight = Number.isFinite(navHeight) ? navHeight : innerHeight;
   const capsuleHeightCss = Math.max(1, Math.min(requestedHeight, innerHeight));
   const capsuleYCss = safeOverscanY + (innerHeight - capsuleHeightCss) / 2;
-  const deviceScale = Number(globalThis.devicePixelRatio);
-  const scale = Math.min(Math.max(Number.isFinite(deviceScale) ? deviceScale : 1, 1), 2);
+  const scale = getNativeRenderScale();
   const key = [
     safeWidth,
     safeHeight,

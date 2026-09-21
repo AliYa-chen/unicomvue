@@ -32,6 +32,7 @@ import {
 import { useTheme } from "@/composables/useTheme";
 import { createLiquidGlassPlainWallpaper } from "@/utils/liquidGlassWallpaper";
 import {
+  applyLiquidGlassMaxQuality,
   disposeLiquidGlassElement,
   loadLiquidGlass,
 } from "@/vendor/liquid-glass/loadLiquidGlass";
@@ -54,6 +55,8 @@ let glassCanvas = null;
 let mounted = false;
 let syncingFromVue = false;
 let mountGeneration = 0;
+let assetRefreshFrame = 0;
+let engineResizeObserver = null;
 
 function clampValue(value) {
   const minimum = Math.min(props.min, props.max);
@@ -140,10 +143,30 @@ function buildWallpaper() {
   );
 }
 
+function refreshQualityAssets() {
+  assetRefreshFrame = 0;
+  if (!mounted || !glassElement) return;
+  applyLiquidGlassMaxQuality(glassElement);
+  const wallpaper = buildWallpaper();
+  if (glassElement.getAttribute("wallpaper") !== wallpaper) {
+    glassElement.setAttribute("wallpaper", wallpaper);
+  }
+}
+
+function scheduleQualityRefresh() {
+  if (assetRefreshFrame) cancelAnimationFrame(assetRefreshFrame);
+  assetRefreshFrame = requestAnimationFrame(refreshQualityAssets);
+}
+
 async function waitForEngineReady(element, generation) {
   for (let frame = 0; frame < 120; frame += 1) {
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    if (!mounted || generation !== mountGeneration || element !== glassElement) return false;
+    if (
+      !mounted
+      || generation !== mountGeneration
+      || element !== glassElement
+      || !element.isConnected
+    ) return false;
     if (element._renderer?.wallpaperReady && element._elements?.length) return true;
   }
   return false;
@@ -166,8 +189,7 @@ async function mountGlassElement() {
   try {
     const element = document.createElement("liquid-glass");
     glassElement = element;
-    element.setAttribute("dpr", "2");
-    element.setAttribute("blur-tap-cap", "9");
+    applyLiquidGlassMaxQuality(element);
     element.setAttribute("corner-style", "1");
     element.setAttribute("wallpaper", buildWallpaper());
     element.toggleAttribute("dark", isDark.value);
@@ -221,17 +243,25 @@ watch(isDark, (dark) => {
   if (!glassElement) return;
   syncingFromVue = true;
   glassElement.toggleAttribute("dark", dark);
-  glassElement.setAttribute("wallpaper", buildWallpaper());
+  refreshQualityAssets();
   queueMicrotask(() => { syncingFromVue = false; });
 });
 
 onMounted(() => {
   mounted = true;
+  if (typeof ResizeObserver !== "undefined" && hostRef.value) {
+    engineResizeObserver = new ResizeObserver(scheduleQualityRefresh);
+    engineResizeObserver.observe(hostRef.value);
+  }
+  window.addEventListener("resize", scheduleQualityRefresh, { passive: true });
   void mountGlassElement();
 });
 
 onBeforeUnmount(() => {
   mounted = false;
+  engineResizeObserver?.disconnect();
+  window.removeEventListener("resize", scheduleQualityRefresh);
+  if (assetRefreshFrame) cancelAnimationFrame(assetRefreshFrame);
   destroyGlassElement();
 });
 </script>

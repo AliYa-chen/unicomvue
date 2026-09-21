@@ -37,7 +37,10 @@
             <span id="live-speed-title" class="text-xs font-semibold tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
               下载速度
             </span>
-            <span class="mt-1 max-w-full truncate px-3 tabular-nums text-[clamp(2.75rem,13vw,4rem)] font-semibold leading-none tracking-tight">
+            <span
+              ref="speedValueRef"
+              class="speed-gauge__value mt-1 px-3 tabular-nums font-semibold leading-none tracking-tight"
+            >
               {{ formattedSpeed }}
             </span>
             <span class="mt-2 text-base font-semibold text-zinc-500 dark:text-zinc-400">Mbps</span>
@@ -156,7 +159,15 @@
 </template>
 
 <script setup>
-import { computed, ref, useTemplateRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  useTemplateRef,
+  watch,
+} from "vue";
 import { Play, Settings2, Square } from "@lucide/vue";
 import ThemeSelector from "@/components/app/ThemeSelector.vue";
 import SpeedSettingsDialog from "@/components/speed/SpeedSettingsDialog.vue";
@@ -166,10 +177,13 @@ import { useSpeedTest } from "@/composables/useSpeedTest";
 const props = defineProps({ active: { type: Boolean, default: false } });
 const settingsOpen = defineModel("settingsOpen", { type: Boolean, default: false });
 const settingsButtonRef = useTemplateRef("settingsButtonRef");
+const speedValueRef = useTemplateRef("speedValueRef");
 const customLabel = ref("");
 const customUrl = ref("");
 const customError = ref("");
 const { openPrivacy } = usePrivacy();
+let speedValueResizeObserver = null;
+let speedValueFitFrame = 0;
 
 const {
   nodeGroups,
@@ -241,10 +255,35 @@ const chartAriaLabel = computed(() => samples.value.length
 
 function formatSpeed(value) {
   if (!Number.isFinite(value)) return "0.0";
+  const fractionDigits = value >= 1000 ? 0 : 1;
   return new Intl.NumberFormat("zh-CN", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: value >= 1000 ? 0 : 1,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   }).format(value);
+}
+
+function fitSpeedValue() {
+  speedValueFitFrame = 0;
+  const element = speedValueRef.value;
+  const container = element?.parentElement;
+  if (!element || !container || container.clientWidth <= 0) return;
+
+  element.style.removeProperty("--speed-value-size");
+  const styles = getComputedStyle(element);
+  const baseSize = Number.parseFloat(styles.fontSize);
+  const horizontalPadding = Number.parseFloat(styles.paddingLeft)
+    + Number.parseFloat(styles.paddingRight);
+  const availableWidth = Math.max(1, container.clientWidth - horizontalPadding - 8);
+  const naturalWidth = Math.max(1, element.getBoundingClientRect().width - horizontalPadding);
+  if (naturalWidth <= availableWidth || !Number.isFinite(baseSize)) return;
+
+  const fittedSize = baseSize * (availableWidth / naturalWidth) * 0.98;
+  element.style.setProperty("--speed-value-size", `${Math.max(1, fittedSize)}px`);
+}
+
+function scheduleSpeedValueFit() {
+  if (speedValueFitFrame) cancelAnimationFrame(speedValueFitFrame);
+  speedValueFitFrame = requestAnimationFrame(fitSpeedValue);
 }
 
 function formatBytes(value) {
@@ -275,12 +314,32 @@ function openSettings() {
   settingsOpen.value = true;
 }
 
+watch(formattedSpeed, async () => {
+  await nextTick();
+  scheduleSpeedValueFit();
+}, { flush: "post" });
+
 watch(settingsOpen, (open) => {
   if (open) customError.value = "";
 });
 
 watch(() => props.active, (active) => {
   if (!active) settingsOpen.value = false;
+  else nextTick(scheduleSpeedValueFit);
+});
+
+onMounted(() => {
+  const container = speedValueRef.value?.parentElement;
+  if (typeof ResizeObserver !== "undefined" && container) {
+    speedValueResizeObserver = new ResizeObserver(scheduleSpeedValueFit);
+    speedValueResizeObserver.observe(container);
+  }
+  scheduleSpeedValueFit();
+});
+
+onBeforeUnmount(() => {
+  speedValueResizeObserver?.disconnect();
+  if (speedValueFitFrame) cancelAnimationFrame(speedValueFitFrame);
 });
 </script>
 
@@ -352,6 +411,14 @@ watch(() => props.active, (active) => {
   border-radius: inherit;
   background: radial-gradient(circle at 50% 25%, rgb(255 255 255 / 100%), rgb(250 250 250 / 98%) 72%);
   box-shadow: inset 0 2px 10px color-mix(in srgb, var(--app-accent-500) 7%, transparent);
+}
+
+.speed-gauge__value {
+  display: inline-block;
+  flex: none;
+  max-width: none;
+  white-space: nowrap;
+  font-size: var(--speed-value-size, clamp(2.75rem, 13vw, 4rem));
 }
 
 .speed-description {

@@ -25,6 +25,7 @@ import {
 import { useTheme } from "@/composables/useTheme";
 import { createLiquidGlassPlainWallpaper } from "@/utils/liquidGlassWallpaper";
 import {
+  applyLiquidGlassMaxQuality,
   disposeLiquidGlassElement,
   loadLiquidGlass,
 } from "@/vendor/liquid-glass/loadLiquidGlass";
@@ -45,6 +46,7 @@ let glassCanvas = null;
 let mounted = false;
 let syncingFromVue = false;
 let mountGeneration = 0;
+let qualityRefreshFrame = 0;
 
 function buildWallpaper() {
   const bounds = hostRef.value?.getBoundingClientRect();
@@ -54,6 +56,21 @@ function buildWallpaper() {
     isDark.value,
     "plain",
   );
+}
+
+function refreshQualityAssets() {
+  qualityRefreshFrame = 0;
+  if (!mounted || !glassElement) return;
+  applyLiquidGlassMaxQuality(glassElement);
+  const wallpaper = buildWallpaper();
+  if (glassElement.getAttribute("wallpaper") !== wallpaper) {
+    glassElement.setAttribute("wallpaper", wallpaper);
+  }
+}
+
+function scheduleQualityRefresh() {
+  if (qualityRefreshFrame) cancelAnimationFrame(qualityRefreshFrame);
+  qualityRefreshFrame = requestAnimationFrame(refreshQualityAssets);
 }
 
 function syncAccessibility() {
@@ -98,6 +115,7 @@ async function waitForEngineReady(element, generation) {
       || !props.active
       || generation !== mountGeneration
       || element !== glassElement
+      || !element.isConnected
     ) {
       return false;
     }
@@ -123,8 +141,7 @@ async function mountGlassElement() {
     const element = document.createElement("liquid-glass");
     glassElement = element;
     element.setAttribute("mode", "single-toggle");
-    element.setAttribute("dpr", "2");
-    element.setAttribute("blur-tap-cap", "9");
+    applyLiquidGlassMaxQuality(element);
     element.setAttribute("corner-style", "1");
     element.setAttribute("wallpaper", buildWallpaper());
     element.toggleAttribute("dark", isDark.value);
@@ -184,17 +201,20 @@ watch(isDark, (dark) => {
   if (!glassElement) return;
   syncingFromVue = true;
   glassElement.toggleAttribute("dark", dark);
-  glassElement.setAttribute("wallpaper", buildWallpaper());
+  refreshQualityAssets();
   queueMicrotask(() => { syncingFromVue = false; });
 });
 
 onMounted(() => {
   mounted = true;
+  window.addEventListener("resize", scheduleQualityRefresh, { passive: true });
   if (props.active) void mountGlassElement();
 });
 
 onBeforeUnmount(() => {
   mounted = false;
+  window.removeEventListener("resize", scheduleQualityRefresh);
+  if (qualityRefreshFrame) cancelAnimationFrame(qualityRefreshFrame);
   destroyGlassElement();
 });
 </script>
