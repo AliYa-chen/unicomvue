@@ -9,8 +9,7 @@ import { withAbortTimeout } from "@/utils/abort";
 
 export async function fetchNetworkInfo(
   signal,
-  ip = "",
-  fetchImpl = globalThis.fetch,
+  { ip = "", fetchImpl = globalThis.fetch } = {},
 ) {
   return withAbortTimeout({
     parentSignal: signal,
@@ -43,10 +42,8 @@ export async function fetchInternationalTrace(
     parentSignal: signal,
     timeoutMs: NETWORK_REQUEST_TIMEOUT_MS,
     task: async (requestSignal) => {
-      const url = new URL(NETWORK_INTERNATIONAL_TRACE_URL);
-      url.searchParams.set("_", `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
       const startedAt = performance.now();
-      const response = await fetchImpl(url.href, {
+      const response = await fetchImpl(NETWORK_INTERNATIONAL_TRACE_URL, {
         cache: "no-store",
         credentials: "omit",
         mode: "cors",

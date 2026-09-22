@@ -6,6 +6,8 @@ const CONNECTION_LABELS = Object.freeze({
   wimax: "WiMAX",
 });
 
+export const INTERNATIONAL_ROUTE_LABEL = "国际";
+
 export const EMPTY_NETWORK_PROFILE = Object.freeze({
   publicIp: "",
   locationLabel: "",
@@ -37,6 +39,18 @@ function normalizePublicIp(value) {
   } catch {
     return "";
   }
+}
+
+export function isSamePublicIp(left, right) {
+  const first = normalizePublicIp(left);
+  const second = normalizePublicIp(right);
+  if (!first || !second) return false;
+  if (!first.includes(":")) {
+    return !second.includes(":")
+      && first.split(".").map(Number).join(".") === second.split(".").map(Number).join(".");
+  }
+  if (!second.includes(":")) return false;
+  return new URL(`http://[${first}]/`).hostname === new URL(`http://[${second}]/`).hostname;
 }
 
 function uniqueText(values) {
@@ -112,7 +126,7 @@ export function normalizeNetworkProfile(
     carrierLabel: carrier,
     networkTypeLabel: resolveConnectionLabel(data?.type, connectionType),
     routeKind: countryCode === "CN" ? "domestic" : international ? "international" : "unknown",
-    routeLabel: international ? "国际线路" : "",
+    routeLabel: international ? INTERNATIONAL_ROUTE_LABEL : "",
   };
 }
 
@@ -132,7 +146,7 @@ export function parseNetworkTrace(body) {
     fields[line.slice(0, separator)] = line.slice(separator + 1).trim();
   }
   return {
-    ip: cleanNetworkText(fields.ip, 64),
+    ip: normalizePublicIp(fields.ip),
     countryCode: cleanNetworkText(fields.loc, 8).toUpperCase(),
   };
 }

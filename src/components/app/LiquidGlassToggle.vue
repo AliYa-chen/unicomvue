@@ -1,6 +1,6 @@
 <template>
   <div class="liquid-toggle" :class="{ 'is-ready': glassReady }">
-    <div ref="hostRef" class="liquid-toggle__engine"></div>
+    <div v-if="!isIOS" ref="hostRef" class="liquid-toggle__engine"></div>
 
     <label v-if="!glassReady" class="liquid-toggle__fallback">
       <span class="sr-only">{{ label }}</span>
@@ -23,6 +23,7 @@ import {
   watch,
 } from "vue";
 import { useTheme } from "@/composables/useTheme";
+import { isIOSDevice } from "@/utils/device";
 import { createLiquidGlassPlainWallpaper } from "@/utils/liquidGlassWallpaper";
 import {
   applyLiquidGlassMaxQuality,
@@ -37,6 +38,7 @@ const props = defineProps({
 });
 const emit = defineEmits(["update:modelValue"]);
 const { isDark } = useTheme();
+const isIOS = isIOSDevice();
 const hostRef = useTemplateRef("hostRef");
 const fallbackInputRef = useTemplateRef("fallbackInputRef");
 const glassReady = ref(false);
@@ -126,7 +128,7 @@ async function waitForEngineReady(element, generation) {
 
 async function mountGlassElement() {
   const host = hostRef.value;
-  if (glassElement || !props.active || !host || !mounted) return;
+  if (isIOS || glassElement || !props.active || !host || !mounted) return;
   const generation = ++mountGeneration;
   if (
     !(await loadLiquidGlass())
@@ -194,6 +196,7 @@ function destroyGlassElement() {
 watch(() => props.modelValue, syncToggleValue);
 watch(() => props.label, syncAccessibility);
 watch(() => props.active, (active) => {
+  if (isIOS) return;
   if (active) void mountGlassElement();
   else destroyGlassElement();
 });
@@ -207,6 +210,7 @@ watch(isDark, (dark) => {
 
 onMounted(() => {
   mounted = true;
+  if (isIOS) return;
   window.addEventListener("resize", scheduleQualityRefresh, { passive: true });
   if (props.active) void mountGlassElement();
 });

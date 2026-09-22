@@ -17,7 +17,10 @@ import {
 import {
   EMPTY_NETWORK_PROFILE,
   hasNetworkProfileDetails,
+  INTERNATIONAL_ROUTE_LABEL,
+  isSamePublicIp,
   medianMeasurement,
+  networkRegionName,
   networkTraceFingerprint,
   normalizeNetworkProfile,
   resolveConnectionLabel,
@@ -38,6 +41,9 @@ function nextPollDelay(startedAt, intervalMs) {
   return Math.max(0, intervalMs - (performance.now() - startedAt));
 }
 
+const MAX_CLOUDFLARE_PROFILES = 8;
+const MAX_CLOUDFLARE_QUERIES = 2;
+
 export function useNetworkStatus() {
   const profile = ref({
     ...EMPTY_NETWORK_PROFILE,
@@ -53,6 +59,10 @@ export function useNetworkStatus() {
   const profileResolvedOnce = ref(false);
 
   let profileUpdatedAt = 0;
+  let localProfile = null;
+  const cloudflareProfiles = new Map();
+  const cloudflareProfileControllers = new Map();
+  const cloudflareRetryAt = new Map();
   let latencySamples = [];
   let latencyWarmupNeeded = true;
   let currentRouteKind = "unknown";
@@ -101,6 +111,8 @@ export function useNetworkStatus() {
     runGeneration += 1;
     clearTimers();
     profileController?.abort();
+    for (const controller of cloudflareProfileControllers.values()) controller.abort();
+    cloudflareProfileControllers.clear();
     latencyController?.abort();
     routeController?.abort();
     profileController = null;
@@ -155,17 +167,95 @@ export function useNetworkStatus() {
     startLatencyIfNeeded(generation);
   }
 
-  function commitProfile(nextProfile, generation, { resolved = false } = {}) {
-    if (!nextProfile || generation !== runGeneration) return;
-    const routeChanged = currentRouteKind !== nextProfile.routeKind;
-    currentRouteKind = nextProfile.routeKind;
-    profile.value = nextProfile;
-    if (resolved) {
-      profileResolvedOnce.value = true;
-      profileUpdatedAt = Date.now();
-    }
-    profileError.value = "";
+  function syncVisibleProfile(generation) {
+    if (generation !== runGeneration) return;
+    const trace = currentTrace;
+    const fingerprint = networkTraceFingerprint(trace);
+    const currentCloudflareProfile = cloudflareProfiles.get(fingerprint) || null;
+    const traceRouteKind = routeKindFromCountryCode(trace?.countryCode);
+    // A domestic dual-stack connection may use different IPv4/IPv6 exits at
+    // Netart and Cloudflare. Keep valid local CN details until the Cloudflare
+    // IP lookup resolves, but never borrow them for an international trace.
+    const matchingLocalProfile = localProfile && (
+      !trace?.ip
+      || isSamePublicIp(localProfile.publicIp, trace.ip)
+      || (traceRouteKind === "domestic" && localProfile.routeKind === "domestic")
+    ) ? localProfile : null;
+    const selectedProfile = currentCloudflareProfile || matchingLocalProfile;
+    const confirmedRouteKind = currentCloudflareProfile?.routeKind;
+    const nextRouteKind = (confirmedRouteKind && confirmedRouteKind !== "unknown"
+      ? confirmedRouteKind
+      : null)
+      || (traceRouteKind !== "unknown" ? traceRouteKind : null)
+      || selectedProfile?.routeKind
+      || localProfile?.routeKind
+      || "unknown";
+    const routeChanged = currentRouteKind !== nextRouteKind;
+    currentRouteKind = nextRouteKind;
+    profile.value = {
+      ...(selectedProfile || (!trace?.ip ? localProfile : null) || EMPTY_NETWORK_PROFILE),
+      publicIp: selectedProfile?.publicIp || trace?.ip || localProfile?.publicIp || "",
+      locationLabel: selectedProfile?.locationLabel
+        || (nextRouteKind === "international" ? networkRegionName(trace?.countryCode) : ""),
+      carrierLabel: selectedProfile?.carrierLabel || "",
+      networkTypeLabel: selectedProfile?.networkTypeLabel
+        || localProfile?.networkTypeLabel
+        || currentConnectionLabel(),
+      routeKind: nextRouteKind,
+      routeLabel: nextRouteKind === "international" ? INTERNATIONAL_ROUTE_LABEL : "",
+    };
     if (routeChanged) resetLatencyTarget(generation);
+  }
+
+  async function refreshCloudflareProfile(trace, generation) {
+    const fingerprint = networkTraceFingerprint(trace);
+    if (
+      !shouldRun()
+      || generation !== runGeneration
+      || !trace.ip
+      || !fingerprint
+      || cloudflareProfiles.has(fingerprint)
+      || cloudflareProfileControllers.has(fingerprint)
+      || cloudflareProfileControllers.size >= MAX_CLOUDFLARE_QUERIES
+      || Date.now() < (cloudflareRetryAt.get(fingerprint) || 0)
+    ) return;
+
+    const controller = new AbortController();
+    cloudflareProfileControllers.set(fingerprint, controller);
+    try {
+      const payload = await fetchNetworkInfo(controller.signal, { ip: trace.ip });
+      if (generation !== runGeneration || controller.signal.aborted) return;
+      const nextProfile = normalizeNetworkProfile(
+        payload,
+        trace.countryCode,
+        globalThis.navigator?.connection?.type,
+      );
+      if (!isSamePublicIp(nextProfile.publicIp, trace.ip)
+        || !hasNetworkProfileDetails(nextProfile)) {
+        throw new Error("Cloudflare 出口信息查询失败");
+      }
+      cloudflareProfiles.set(fingerprint, nextProfile);
+      if (cloudflareProfiles.size > MAX_CLOUDFLARE_PROFILES) {
+        cloudflareProfiles.delete(cloudflareProfiles.keys().next().value);
+      }
+      cloudflareRetryAt.delete(fingerprint);
+      if (fingerprint === networkTraceFingerprint(currentTrace)) {
+        profileResolvedOnce.value = true;
+        syncVisibleProfile(generation);
+        if (currentRouteKind === "international") recordLatency(currentTrace.latencyMs);
+      }
+    } catch {
+      if (!controller.signal.aborted && generation === runGeneration) {
+        cloudflareRetryAt.set(fingerprint, Date.now() + NETWORK_INFO_RETRY_MS);
+        if (cloudflareRetryAt.size > MAX_CLOUDFLARE_PROFILES) {
+          cloudflareRetryAt.delete(cloudflareRetryAt.keys().next().value);
+        }
+      }
+    } finally {
+      if (cloudflareProfileControllers.get(fingerprint) === controller) {
+        cloudflareProfileControllers.delete(fingerprint);
+      }
+    }
   }
 
   function recordLatency(sample) {
@@ -180,7 +270,6 @@ export function useNetworkStatus() {
   async function refreshProfile(
     force = false,
     generation = runGeneration,
-    traceOverride = currentTrace,
   ) {
     if (!shouldRun() || generation !== runGeneration) return;
     if (!force && profileUpdatedAt && Date.now() - profileUpdatedAt < NETWORK_INFO_REFRESH_MS) {
@@ -196,29 +285,23 @@ export function useNetworkStatus() {
     profileController = controller;
     profileLoading.value = true;
     profileError.value = "";
-    const trace = traceOverride;
-    const requestedTraceFingerprint = networkTraceFingerprint(trace);
 
     try {
-      const payload = await fetchNetworkInfo(controller.signal, trace?.ip || "");
+      const payload = await fetchNetworkInfo(controller.signal);
       if (generation !== runGeneration || controller.signal.aborted) return;
-      if (requestedTraceFingerprint !== networkTraceFingerprint(currentTrace)) return;
-
       const normalizedProfile = normalizeNetworkProfile(
         payload,
-        trace?.countryCode,
+        "",
         globalThis.navigator?.connection?.type,
       );
-      const tracedRouteKind = routeKindFromCountryCode(trace?.countryCode);
-      const nextProfile = tracedRouteKind === "unknown"
-        ? normalizedProfile
-        : {
-            ...normalizedProfile,
-            routeKind: tracedRouteKind,
-            routeLabel: tracedRouteKind === "international" ? "国际线路" : "",
-          };
-      if (!hasNetworkProfileDetails(nextProfile)) throw new Error("网络信息查询失败");
-      commitProfile(nextProfile, generation, { resolved: true });
+      if (!normalizedProfile.publicIp || !hasNetworkProfileDetails(normalizedProfile)) {
+        throw new Error("网络信息查询失败");
+      }
+      localProfile = normalizedProfile;
+      profileResolvedOnce.value = true;
+      profileUpdatedAt = Date.now();
+      profileError.value = "";
+      syncVisibleProfile(generation);
     } catch (error) {
       if (!controller.signal.aborted && generation === runGeneration) {
         profileError.value = getErrorMessage(error, "网络信息查询失败");
@@ -250,19 +333,11 @@ export function useNetworkStatus() {
         nextFingerprint
         && nextFingerprint !== previousFingerprint
       );
-      const detectedRouteKind = routeKindFromCountryCode(trace.countryCode);
-      if (
-        detectedRouteKind !== "unknown"
-        && currentRouteKind !== detectedRouteKind
-      ) {
-        currentRouteKind = detectedRouteKind;
-        resetLatencyTarget(generation);
-      }
-
-      if (detectedRouteKind === "international") recordLatency(trace.latencyMs);
-      if (traceChanged) {
-        void refreshProfile(true, generation, trace);
-      }
+      if (traceChanged) syncVisibleProfile(generation);
+      if (currentRouteKind === "international") recordLatency(trace.latencyMs);
+      // Netart's direct IP and Cloudflare's VPN/proxy exit can differ. Query
+      // the latter once per fingerprint, retrying failures with a backoff.
+      void refreshCloudflareProfile(trace, generation);
     } catch {
       // Keep the last known route while a transient high-frequency probe fails.
     } finally {
@@ -334,6 +409,9 @@ export function useNetworkStatus() {
       };
       profileUpdatedAt = 0;
       profileError.value = "";
+      localProfile = null;
+      cloudflareProfiles.clear();
+      cloudflareRetryAt.clear();
       currentRouteKind = "unknown";
       currentTrace = null;
       latencySamples = [];
@@ -359,6 +437,8 @@ export function useNetworkStatus() {
     offline.value = true;
     currentRouteKind = "unknown";
     currentTrace = null;
+    cloudflareProfiles.clear();
+    cloudflareRetryAt.clear();
     latencySamples = [];
     latencyWarmupNeeded = true;
     latencyMs.value = null;

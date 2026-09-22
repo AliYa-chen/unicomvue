@@ -46,6 +46,7 @@ import {
 } from "vue";
 import { useTheme } from "@/composables/useTheme";
 import { APP_TABS, APP_TAB_VALUES, isAppTab } from "@/config/appNavigation";
+import { isIOSDevice } from "@/utils/device";
 import {
   createLiquidGlassMask,
   createLiquidGlassWallpaper,
@@ -79,7 +80,7 @@ const props = defineProps({
 });
 const emit = defineEmits(["change"]);
 const { isDark } = useTheme();
-const isIOS = detectIOS();
+const isIOS = isIOSDevice();
 const glassHostRef = useTemplateRef("glassHostRef");
 const glassReady = ref(false);
 const engineMask = ref("");
@@ -99,13 +100,6 @@ let mountRetryCount = 0;
 let mountRetryTimer = null;
 let assetRefreshFrame = 0;
 let engineResizeObserver = null;
-
-function detectIOS() {
-  const device = globalThis.navigator;
-  if (!device) return false;
-  return /iPad|iPhone|iPod/i.test(device.userAgent || "")
-    || (device.platform === "MacIntel" && device.maxTouchPoints > 1);
-}
 
 function activeIndex() {
   return Math.max(0, APP_TAB_VALUES.indexOf(props.activeTab));

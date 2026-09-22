@@ -1,3 +1,5 @@
+import { isIOSDevice } from "@/utils/device";
+
 const LIQUID_GLASS_TAG = "liquid-glass";
 const MAX_BLUR_TAP_CAP = 33;
 
@@ -23,7 +25,7 @@ function supportsLiquidGlass() {
 }
 
 export async function loadLiquidGlass() {
-  if (typeof window === "undefined" || typeof document === "undefined") return false;
+  if (isIOSDevice() || typeof window === "undefined" || typeof document === "undefined") return false;
   if (window.customElements.get(LIQUID_GLASS_TAG)) return true;
   if (!supportsLiquidGlass()) return false;
 

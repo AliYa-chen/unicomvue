@@ -3,7 +3,7 @@
     class="liquid-thread-slider"
     :class="{ 'is-ready': glassReady }"
   >
-    <div ref="hostRef" class="liquid-thread-slider__engine"></div>
+    <div v-if="!isIOS" ref="hostRef" class="liquid-thread-slider__engine"></div>
 
     <label v-if="!glassReady" class="liquid-thread-slider__fallback">
       <span class="sr-only">{{ label }}</span>
@@ -31,6 +31,7 @@ import {
 } from "vue";
 import { useTheme } from "@/composables/useTheme";
 import { clamp } from "@/utils/number";
+import { isIOSDevice } from "@/utils/device";
 import { createLiquidGlassPlainWallpaper } from "@/utils/liquidGlassWallpaper";
 import {
   applyLiquidGlassMaxQuality,
@@ -46,6 +47,7 @@ const props = defineProps({
 });
 const emit = defineEmits(["update:modelValue"]);
 const { isDark } = useTheme();
+const isIOS = isIOSDevice();
 const hostRef = useTemplateRef("hostRef");
 const fallbackInputRef = useTemplateRef("fallbackInputRef");
 const glassReady = ref(false);
@@ -219,7 +221,7 @@ async function waitForEngineReady(element, generation) {
 
 async function mountGlassElement() {
   const host = hostRef.value;
-  if (!host || !mounted || glassElement) return;
+  if (isIOS || !host || !mounted || glassElement) return;
   const generation = ++mountGeneration;
   if (
     !(await loadLiquidGlass())
@@ -297,6 +299,7 @@ watch(isDark, (dark) => {
 
 onMounted(() => {
   mounted = true;
+  if (isIOS) return;
   if (typeof ResizeObserver !== "undefined" && hostRef.value) {
     engineResizeObserver = new ResizeObserver(scheduleQualityRefresh);
     engineResizeObserver.observe(hostRef.value);
