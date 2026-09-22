@@ -1777,6 +1777,48 @@ void main() {
 }
 `
   );
+  // Opt-in bottom navigation compositing: the legacy scene is rendered over a
+  // neutral color so its glass/highlight calculations still work, then only
+  // pixels differing from that neutral scene are drawn over the real page.
+  // The page itself is provided by CSS backdrop-filter behind the canvas; a
+  // WebGL texture cannot sample arbitrary DOM content underneath its canvas.
+  var TRANSPARENT_BACKDROP_FRAGMENT_SHADER = (
+    /* glsl */
+    `
+precision highp float;
+
+uniform sampler2D uTexture;
+uniform vec2 uCanvasSize;
+uniform vec3 uNeutralColor;
+uniform vec4 uGlassRect;
+uniform vec4 uIndicatorRect;
+uniform float uGlassAlpha;
+uniform float uIndicatorAlpha;
+
+float capsuleCoverage(vec2 pixel, vec4 rect) {
+    if (rect.z <= 0.0 || rect.w <= 0.0) return 0.0;
+    vec2 halfSize = rect.zw * 0.5;
+    float radius = min(halfSize.x, halfSize.y);
+    vec2 q = abs(pixel - (rect.xy + halfSize)) - halfSize + vec2(radius);
+    float sd = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+    return 1.0 - smoothstep(-1.0, 1.0, sd);
+}
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / uCanvasSize;
+    vec3 color = texture2D(uTexture, uv).rgb;
+    vec3 difference = abs(color - uNeutralColor);
+    float strength = max(difference.r, max(difference.g, difference.b));
+    // Preserve the actual animated capsule silhouettes even where their RGB
+    // matches the neutral backdrop. Color contrast alone would erase them.
+    vec2 pixel = vec2(gl_FragCoord.x, uCanvasSize.y - gl_FragCoord.y);
+    float glass = capsuleCoverage(pixel, uGlassRect) * uGlassAlpha;
+    float indicator = capsuleCoverage(pixel, uIndicatorRect) * uIndicatorAlpha;
+    float opacity = max(max(glass, indicator), clamp(strength * 3.0, 0.0, 1.0));
+    gl_FragColor = vec4(color, opacity);
+}
+`
+  );
   var SOLID_FILL_FRAGMENT_SHADER = (
     /* glsl */
     `
@@ -2619,6 +2661,32 @@ ${sampleCode}}
       gl.disable(gl.BLEND);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     },
+    /** Transparent canvas output for the opt-in wallpaper-free bottom tabs. */
+    gooseCopyToCanvas(srcTex) {
+      if (!this.transparentBackdrop) {
+        this.gooseCopy(srcTex);
+        return;
+      }
+      const gl = this.gl;
+      gl.useProgram(this.transparentBackdropProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
+      gl.enableVertexAttribArray(this.aPosLocTb);
+      gl.vertexAttribPointer(this.aPosLocTb, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, srcTex);
+      gl.uniform1i(this.uTb["uTexture"], 0);
+      gl.uniform2f(this.uTb["uCanvasSize"], this.fboW, this.fboH);
+      gl.uniform3fv(this.uTb["uNeutralColor"], this.transparentNeutralColor);
+      const glass = this.transparentGlassRect || [0, 0, 0, 0];
+      const indicator = this.transparentIndicatorRect || [0, 0, 0, 0];
+      gl.uniform4fv(this.uTb["uGlassRect"], glass);
+      gl.uniform4fv(this.uTb["uIndicatorRect"], indicator);
+      gl.uniform1f(this.uTb["uGlassAlpha"], this.transparentGlassAlpha || 0);
+      gl.uniform1f(this.uTb["uIndicatorAlpha"], this.transparentIndicatorAlpha || 0);
+      gl.disable(gl.BLEND);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      this.transparentFrameReady = true;
+    },
     /** Fullscreen solid-color fill — used when backgroundColor is set
      *  (e.g. black for the Home page). The caller must have already bound
      *  the destination FBO. */
@@ -2948,6 +3016,29 @@ ${sampleCode}}
 
   // renderer/methods-wallpaper.ts
   var wallpaperMethods = {
+    /** A 1px neutral sampler keeps the existing glass shader operational
+     *  without allocating or loading a wallpaper image. Only opt-in bottom
+     *  tabs use it; the final pass makes the neutral scene transparent. */
+    gooseUseTransparentBackdrop(dark) {
+      const gl = this.gl;
+      const value = dark ? 18 : 250;
+      const neutral = value / 255;
+      this.transparentNeutralColor = new Float32Array([neutral, neutral, neutral]);
+      if (this.wallpaperTexture) gl.deleteTexture(this.wallpaperTexture);
+      const texture = gl.createTexture();
+      if (!texture) throw new Error("WebGL texture allocation failed");
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA,
+        gl.UNSIGNED_BYTE, new Uint8Array([value, value, value, 255]));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.wallpaperTexture = texture;
+      this.wallpaperSize = [1, 1];
+      this.wallpaperReady = true;
+      this.gooseBG([neutral, neutral, neutral]);
+    },
     /** Load the wallpaper image as a texture. */
     async gooseLoadWP(src) {
       const img = new Image();
@@ -4137,6 +4228,10 @@ ${sampleCode}}
       this.needsRedraw = false;
       if (!this.wallpaperReady && !this.backgroundColor) return;
       const gl = this.gl;
+      if (this.transparentBackdrop) {
+        this.transparentGlassRect = null;
+        this.transparentIndicatorRect = null;
+      }
       this.gooseResizeFBO(this.canvas.width, this.canvas.height);
       for (const cfg of this.buttonConfigs) {
         if (this.fgDirtyIds.has(cfg.id)) {
@@ -4146,7 +4241,7 @@ ${sampleCode}}
       this.gooseRenderBG();
       if (this.buttonConfigs.length === 0) {
         this.gooseBindFBO(null);
-        this.gooseCopy(this.fboATex);
+        this.gooseCopyToCanvas(this.fboATex);
         return;
       }
       const sceneBlurEl = this.buttonConfigs.find((e) => {
@@ -4215,7 +4310,7 @@ ${sampleCode}}
         otherTex = result.otherTex;
       }
       this.gooseBindFBO(null);
-      this.gooseCopy(curTex);
+      this.gooseCopyToCanvas(curTex);
     },
     /** Helper to set SDF uniforms (canvasSize + offset + size + cornerRadii)
      *  for any of the SDF-using programs. */
@@ -4578,6 +4673,16 @@ ${sampleCode}}
       const sh = el.rect.h * scaleY;
       const sx = cx - sw / 2;
       const sy = cy - sh / 2;
+      if (this.transparentBackdrop) {
+        const rect = [sx * this.dpr, sy * this.dpr, sw * this.dpr, sh * this.dpr];
+        if (el.isBottomTabContainer) {
+          this.transparentGlassRect = rect;
+          this.transparentGlassAlpha = el.surfaceColor?.[3] || 0;
+        } else if (el.isBottomTabIndicator) {
+          this.transparentIndicatorRect = rect;
+          this.transparentIndicatorAlpha = 0.1 + 0.12 * togglePressProgress;
+        }
+      }
       const cornerRadius = el.cornerRadius * Math.min(scaleX, scaleY);
       const radii = [
         cornerRadius,
@@ -5391,8 +5496,14 @@ ${sampleCode}}
 
   // renderer/index.ts
   var LiquidGlassRenderer = class {
-    constructor(canvas) {
+    constructor(canvas, { transparentBackdrop = false } = {}) {
       __publicField(this, "gl");
+      __publicField(this, "transparentBackdrop", false);
+      __publicField(this, "transparentFrameReady", false);
+      __publicField(this, "transparentNeutralColor", null);
+      __publicField(this, "transparentBackdropProgram", null);
+      __publicField(this, "aPosLocTb");
+      __publicField(this, "uTb", {});
       __publicField(this, "elementProgram");
       __publicField(this, "shadowProgram");
       __publicField(this, "wallpaperProgram");
@@ -5572,13 +5683,18 @@ ${sampleCode}}
       __publicField(this, "uSt", {});
       var _a;
       this.canvas = canvas;
+      this.transparentBackdrop = transparentBackdrop;
       const gl = canvas.getContext("webgl", {
         premultipliedAlpha: false,
-        alpha: false,
+        alpha: transparentBackdrop,
         antialias: true,
         preserveDrawingBuffer: false
       });
       if (!gl) throw new Error("WebGL not supported");
+      if (transparentBackdrop && !gl.getContextAttributes()?.alpha) {
+        gl.getExtension("WEBGL_lose_context")?.loseContext();
+        throw new Error("Transparent WebGL canvas not supported");
+      }
       this.gl = gl;
       gl.getExtension("OES_standard_derivatives");
       this.elementProgram = createProgram(gl, VERTEX_SHADER, ELEMENT_FRAGMENT_SHADER);
@@ -5595,6 +5711,16 @@ ${sampleCode}}
       this.plainRectProgram = createProgram(gl, VERTEX_SHADER, PLAIN_RECT_FRAGMENT_SHADER);
       this.progressiveBlurProgram = createProgram(gl, VERTEX_SHADER, PROGRESSIVE_BLUR_FRAGMENT_SHADER);
       this.copyProgram = createProgram(gl, VERTEX_SHADER, COPY_FRAGMENT_SHADER);
+      if (transparentBackdrop) {
+        this.transparentBackdropProgram = createProgram(gl, VERTEX_SHADER, TRANSPARENT_BACKDROP_FRAGMENT_SHADER);
+        this.aPosLocTb = gl.getAttribLocation(this.transparentBackdropProgram, "aPos");
+        for (const name of [
+          "uTexture", "uCanvasSize", "uNeutralColor", "uGlassRect",
+          "uIndicatorRect", "uGlassAlpha", "uIndicatorAlpha"
+        ]) {
+          this.uTb[name] = gl.getUniformLocation(this.transparentBackdropProgram, name);
+        }
+      }
       this.solidFillProgram = createProgram(gl, VERTEX_SHADER, SOLID_FILL_FRAGMENT_SHADER);
       this.colorControlsProgram = createProgram(gl, VERTEX_SHADER, COLOR_CONTROLS_FRAGMENT_SHADER);
       this.sceneTintProgram = createProgram(gl, VERTEX_SHADER, SCENE_TINT_FRAGMENT_SHADER);
@@ -6139,6 +6265,7 @@ ${sampleCode}}
       gl.deleteProgram(this.plainRectProgram);
       gl.deleteProgram(this.progressiveBlurProgram);
       gl.deleteProgram(this.copyProgram);
+      if (this.transparentBackdropProgram) gl.deleteProgram(this.transparentBackdropProgram);
       gl.deleteProgram(this.solidFillProgram);
       gl.deleteProgram(this.colorControlsProgram);
       gl.deleteProgram(this.sceneTintProgram);
@@ -9256,7 +9383,9 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
         this._initSiri();
         return;
       }
-      const renderer = new LiquidGlassRenderer(this._canvas);
+      const transparentBackdrop = this.hasAttribute("transparent-backdrop")
+        && this._mode() === 6 /* SingleBottomTabs */;
+      const renderer = new LiquidGlassRenderer(this._canvas, { transparentBackdrop });
       this._renderer = renderer;
       const dprAttr = this.getAttribute("dpr");
       if (dprAttr != null) {
@@ -9269,10 +9398,14 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
       const corner = this.getAttribute("corner-style");
       if (corner != null) renderer.cornerStyle = parseFloat(corner);
       const mode = this._mode();
-      renderer.gooseBG(null);
-      const wp = this.getAttribute("wallpaper");
-      if (wp && wp !== "gradient") {
-        renderer.gooseLoadWP(wp).catch((e) => console.warn("[liquid-glass] wallpaper load failed:", e));
+      if (transparentBackdrop) {
+        renderer.gooseUseTransparentBackdrop(this._dark);
+      } else {
+        renderer.gooseBG(null);
+        const wp = this.getAttribute("wallpaper");
+        if (wp && wp !== "gradient") {
+          renderer.gooseLoadWP(wp).catch((e) => console.warn("[liquid-glass] wallpaper load failed:", e));
+        }
       }
       const ro = new ResizeObserver(() => this._resize());
       ro.observe(this);
@@ -9324,7 +9457,9 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
         } else if (this._siri) {
           this._siri.kill();
           this._siri = null;
-          const renderer = new LiquidGlassRenderer(this._canvas);
+          const transparentBackdrop = this.hasAttribute("transparent-backdrop")
+            && this._mode() === 6 /* SingleBottomTabs */;
+          const renderer = new LiquidGlassRenderer(this._canvas, { transparentBackdrop });
           this._renderer = renderer;
           const dprAttr = this.getAttribute("dpr");
           if (dprAttr != null) {
@@ -9332,10 +9467,14 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
             const deviceDpr = window.devicePixelRatio || 1;
             renderer.dpr = dv > 0 ? Math.max(0.5, Math.min(deviceDpr, dv)) : deviceDpr;
           }
-          const wp = this.getAttribute("wallpaper");
-          if (wp && wp !== "gradient") renderer.gooseLoadWP(wp).catch(() => {
-          });
-          else this._maybeLoadGradient();
+          if (transparentBackdrop) {
+            renderer.gooseUseTransparentBackdrop(this._dark);
+          } else {
+            const wp = this.getAttribute("wallpaper");
+            if (wp && wp !== "gradient") renderer.gooseLoadWP(wp).catch(() => {
+            });
+            else this._maybeLoadGradient();
+          }
           this._canvas.addEventListener("wheel", this._onWheel, { passive: false });
           this._canvas.addEventListener("pointerdown", this._onDown);
           renderer.gooseScrollY(0);
@@ -9366,12 +9505,14 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
       const r = this._renderer;
       if (name === "dark") {
         this._dark = this.hasAttribute("dark");
-        r.gooseBG(null);
+        if (r.transparentBackdrop) r.gooseUseTransparentBackdrop(this._dark);
+        else r.gooseBG(null);
         this._gradientLoaded = false;
         this._maybeLoadGradient();
         this._rebuild();
         this._emitState();
       } else if (name === "wallpaper") {
+        if (r.transparentBackdrop) return;
         this._gradientLoaded = false;
         if (val && val !== "gradient") r.gooseLoadWP(val).catch(() => {
         });
@@ -9471,6 +9612,7 @@ void main(){ vec2 v = vec2((gl_VertexID<<1)&2, gl_VertexID&2);
     }
     _maybeLoadGradient() {
       var _a, _b;
+      if (this._renderer?.transparentBackdrop) return;
       const wp = this.getAttribute("wallpaper");
       if (this._w <= 0 || this._gradientLoaded) return;
       if (wp === "gradient") {

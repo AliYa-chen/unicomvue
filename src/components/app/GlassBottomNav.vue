@@ -39,10 +39,7 @@ import {
 } from "vue";
 import { useTheme } from "@/composables/useTheme";
 import { APP_TABS, APP_TAB_VALUES, isAppTab } from "@/config/appNavigation";
-import {
-  createLiquidGlassMask,
-  createLiquidGlassWallpaper,
-} from "@/utils/liquidGlassWallpaper";
+import { createLiquidGlassMask } from "@/utils/liquidGlassWallpaper";
 import {
   applyLiquidGlassMaxQuality,
   disposeLiquidGlassElement,
@@ -56,6 +53,8 @@ const NAV_WIDTH = 360;
 const NAV_HEIGHT = 64;
 const ENGINE_OVERSCAN_X = 36;
 const ENGINE_OVERSCAN_Y = 24;
+const MAX_MOUNT_RETRIES = 2;
+const MOUNT_RETRY_DELAYS_MS = Object.freeze([250, 800]);
 const navSafeAreaStyle = Object.freeze({
   "--glass-nav-overscan-x": `${ENGINE_OVERSCAN_X}px`,
   "--glass-nav-overscan-y": `${ENGINE_OVERSCAN_Y}px`,
@@ -85,8 +84,10 @@ let glassCanvas = null;
 let mounted = false;
 let syncingFromVue = false;
 let engineConnected = false;
-let currentWallpaper = "";
 let mountGeneration = 0;
+// Cap recovery attempts for this mounted nav to avoid WebGL context churn.
+let mountRetryCount = 0;
+let mountRetryTimer = null;
 let assetRefreshFrame = 0;
 let engineResizeObserver = null;
 
@@ -98,29 +99,21 @@ function buildEngineAssets() {
   const bounds = glassHostRef.value?.getBoundingClientRect();
   const width = bounds?.width || NAV_WIDTH + ENGINE_OVERSCAN_X * 2;
   const height = bounds?.height || NAV_HEIGHT + ENGINE_OVERSCAN_Y * 2;
-  return {
-    mask: createLiquidGlassMask(
-      width,
-      height,
-      ENGINE_OVERSCAN_X,
-      ENGINE_OVERSCAN_Y,
-      NAV_HEIGHT,
-    ),
-    wallpaper: createLiquidGlassWallpaper(width, height, isDark.value),
-  };
+  return createLiquidGlassMask(
+    width,
+    height,
+    ENGINE_OVERSCAN_X,
+    ENGINE_OVERSCAN_Y,
+    NAV_HEIGHT,
+  );
 }
 
 function refreshEngineAssets() {
   assetRefreshFrame = 0;
   if (!mounted) return;
-  const assets = buildEngineAssets();
-  engineMask.value = assets.mask;
-  currentWallpaper = assets.wallpaper;
+  engineMask.value = buildEngineAssets();
   if (!glassElement) return;
   applyLiquidGlassMaxQuality(glassElement);
-  if (glassElement.getAttribute("wallpaper") !== currentWallpaper) {
-    glassElement.setAttribute("wallpaper", currentWallpaper);
-  }
 }
 
 function scheduleEngineAssetRefresh() {
@@ -147,8 +140,24 @@ function onGlassStateChange(event) {
 function onWebGlContextLost(event) {
   if (event.target !== glassCanvas) return;
   event.preventDefault();
-  console.warn("[liquid-glass] WebGL 上下文已丢失，已使用原生导航。");
+  console.warn("[liquid-glass] 导航 WebGL 上下文已丢失，暂用原生导航。");
   destroyGlassElement();
+  scheduleMountRetry();
+}
+
+function clearMountRetry() {
+  if (mountRetryTimer !== null) clearTimeout(mountRetryTimer);
+  mountRetryTimer = null;
+}
+
+function scheduleMountRetry() {
+  if (!mounted || glassElement || mountRetryTimer !== null || mountRetryCount >= MAX_MOUNT_RETRIES) return;
+  const delay = MOUNT_RETRY_DELAYS_MS[mountRetryCount];
+  mountRetryCount += 1;
+  mountRetryTimer = setTimeout(() => {
+    mountRetryTimer = null;
+    if (mounted && !glassElement) void mountGlassElement();
+  }, delay);
 }
 
 function forwardPointerDown(event) {
@@ -188,7 +197,13 @@ async function waitForEngineReady(element, generation) {
     ) {
       return false;
     }
-    if (engineConnected && element._renderer?.wallpaperReady && element._elements?.length) {
+    if (
+      engineConnected
+      && element._renderer?.transparentBackdrop
+      && element._renderer.wallpaperReady
+      && element._renderer.transparentFrameReady
+      && element._elements?.length
+    ) {
       return true;
     }
   }
@@ -199,32 +214,27 @@ async function mountGlassElement() {
   const host = glassHostRef.value;
   if (!host || !mounted || glassElement) return;
   const generation = ++mountGeneration;
-  if (
-    !(await loadLiquidGlass())
-    || !mounted
-    || generation !== mountGeneration
-    || host !== glassHostRef.value
-    || glassElement
-  ) {
+  const loaded = await loadLiquidGlass();
+  if (!mounted || generation !== mountGeneration || host !== glassHostRef.value || glassElement) return;
+  if (!loaded) {
+    scheduleMountRetry();
     return;
   }
 
   try {
     engineConnected = false;
-    const assets = buildEngineAssets();
-    currentWallpaper = assets.wallpaper;
-    engineMask.value = assets.mask;
+    engineMask.value = buildEngineAssets();
     const element = document.createElement("liquid-glass");
     glassElement = element;
     applyLiquidGlassMaxQuality(element);
     element.setAttribute("corner-style", "1");
-    element.setAttribute("wallpaper", currentWallpaper);
+    element.setAttribute("transparent-backdrop", "");
+    element.setAttribute("mode", "single-bottom-tabs");
     element.toggleAttribute("dark", isDark.value);
     element.addEventListener("lg-statechange", onGlassStateChange);
 
     syncingFromVue = true;
     host.replaceChildren(element);
-    element.setAttribute("mode", "single-bottom-tabs");
     glassCanvas = element.shadowRoot?.querySelector("canvas") ?? null;
     glassCanvas?.addEventListener("webglcontextlost", onWebGlContextLost, { once: true });
 
@@ -235,11 +245,18 @@ async function mountGlassElement() {
     queueMicrotask(() => { syncingFromVue = false; });
     await nextTick();
 
-    if (await waitForEngineReady(element, generation)) glassReady.value = true;
-    else if (generation === mountGeneration) destroyGlassElement();
+    if (await waitForEngineReady(element, generation)) {
+      clearMountRetry();
+      glassReady.value = true;
+    } else if (generation === mountGeneration) {
+      console.warn("[liquid-glass] 导航渲染尚未就绪，暂用原生导航。");
+      destroyGlassElement();
+      scheduleMountRetry();
+    }
   } catch (error) {
-    console.warn("[liquid-glass] WebGL 初始化失败，已使用原生导航。", error);
+    console.warn("[liquid-glass] 导航 WebGL 初始化失败，暂用原生导航。", error);
     destroyGlassElement();
+    scheduleMountRetry();
   }
 }
 
@@ -248,7 +265,6 @@ function destroyGlassElement() {
   glassReady.value = false;
   syncingFromVue = false;
   engineConnected = false;
-  currentWallpaper = "";
   glassCanvas?.removeEventListener("webglcontextlost", onWebGlContextLost);
   glassCanvas = null;
   if (!glassElement) return;
@@ -260,6 +276,8 @@ function destroyGlassElement() {
 watch(() => props.activeTab, syncEngineSelection);
 watch(isDark, async () => {
   if (!mounted) return;
+  clearMountRetry();
+  mountRetryCount = 0;
   destroyGlassElement();
   await nextTick();
   if (mounted) void mountGlassElement();
@@ -277,6 +295,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   mounted = false;
+  clearMountRetry();
   engineResizeObserver?.disconnect();
   window.removeEventListener("resize", scheduleEngineAssetRefresh);
   if (assetRefreshFrame) cancelAnimationFrame(assetRefreshFrame);
@@ -300,7 +319,25 @@ onBeforeUnmount(() => {
   margin-inline: auto;
 }
 
-.glass-bottom-nav__surface { position: relative; height: 64px; }
+.glass-bottom-nav__surface {
+  position: relative;
+  height: 64px;
+  isolation: isolate;
+}
+.glass-bottom-nav__surface::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border: 1px solid rgb(255 255 255 / 42%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 12%);
+  box-shadow: 0 10px 28px rgb(24 24 27 / 10%);
+  content: "";
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  backdrop-filter: blur(18px) saturate(1.35);
+  clip-path: inset(0 round 999px);
+}
 .glass-bottom-nav__engine {
   position: absolute;
   z-index: 1;
@@ -361,17 +398,15 @@ onBeforeUnmount(() => {
   inset: 0;
   overflow: hidden;
   border-radius: 999px;
-  background: rgb(250 250 250 / 76%);
-  box-shadow: 0 10px 28px rgb(24 24 27 / 16%), inset 0 0 0 1px rgb(255 255 255 / 78%);
+  background: transparent;
   pointer-events: auto;
-  backdrop-filter: blur(12px) saturate(1.4);
 }
 .is-fallback .glass-bottom-nav__controls::before {
   position: absolute;
   inset: 4px auto 4px 4px;
   width: calc((100% - 8px) / 3);
   border-radius: 999px;
-  background: rgb(255 255 255 / 72%);
+  background: rgb(255 255 255 / 42%);
   box-shadow: 0 3px 12px rgb(48 50 85 / 13%);
   content: "";
   transform: v-bind(fallbackIndicatorTransform);
@@ -380,14 +415,15 @@ onBeforeUnmount(() => {
 .is-fallback .glass-bottom-nav__tab { color: #52525b; pointer-events: auto; }
 .is-fallback .glass-bottom-nav__tab.is-active { color: #0088ff; }
 
-:global(.dark) .is-fallback .glass-bottom-nav__controls {
-  background: rgb(18 18 18 / 76%);
-  box-shadow: 0 12px 30px rgb(0 0 0 / 35%), inset 0 0 0 1px rgb(255 255 255 / 18%);
+:global(.dark .glass-bottom-nav__surface::before) {
+  border-color: rgb(255 255 255 / 14%);
+  background: rgb(24 24 27 / 18%);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 24%);
 }
-:global(.dark) .is-fallback .glass-bottom-nav__controls::before { background: rgb(255 255 255 / 14%); }
-:global(.dark) .is-fallback .glass-bottom-nav__tab { color: #d4d4d8; }
-:global(.dark) .is-fallback .glass-bottom-nav__tab.is-active { color: #0091ff; }
-:global(.dark) .glass-bottom-nav__tab:focus-visible { outline-color: #0091ff; }
+:global(.dark .is-fallback .glass-bottom-nav__controls::before) { background: rgb(255 255 255 / 14%); }
+:global(.dark .is-fallback .glass-bottom-nav__tab) { color: #d4d4d8; }
+:global(.dark .is-fallback .glass-bottom-nav__tab.is-active) { color: #0091ff; }
+:global(.dark .glass-bottom-nav__tab:focus-visible) { outline-color: #0091ff; }
 
 @media (prefers-reduced-motion: reduce) {
   .is-fallback .glass-bottom-nav__controls::before { transition: none; }
