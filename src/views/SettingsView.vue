@@ -5,7 +5,7 @@
     </header>
 
     <main class="settings-main">
-      <UsagePreferencesSection active />
+      <UsagePreferencesSection :active="active" />
       <AppearanceSettingsSection />
       <SettingsAboutSection @open-privacy="openPrivacy" />
     </main>
@@ -18,6 +18,8 @@ import PageHeading from "@/components/app/PageHeading.vue";
 import SettingsAboutSection from "@/components/app/SettingsAboutSection.vue";
 import UsagePreferencesSection from "@/components/app/UsagePreferencesSection.vue";
 import { usePrivacy } from "@/composables/usePrivacy";
+
+defineProps({ active: { type: Boolean, default: false } });
 
 const { openPrivacy } = usePrivacy();
 </script>

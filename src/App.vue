@@ -1,5 +1,5 @@
 <script setup>
-import { computed, defineAsyncComponent, nextTick, ref } from "vue";
+import { computed, defineAsyncComponent, nextTick, reactive, ref } from "vue";
 import GlassBottomNav from "@/components/app/GlassBottomNav.vue";
 import SpotlightBackground from "@/components/app/SpotlightBackground.vue";
 import PrivacyModal from "@/components/privacy/PrivacyModal.vue";
@@ -16,8 +16,8 @@ const SettingsView = defineAsyncComponent(() => import("@/views/SettingsView.vue
 const privacyOpen = ref(false);
 const loginOpen = ref(false);
 const speedSettingsOpen = ref(false);
-const speedTestRunning = ref(false);
 const activeTab = ref(DEFAULT_APP_TAB);
+const visitedTabs = reactive(new Set([DEFAULT_APP_TAB]));
 const theme = provideTheme();
 provideAccountStore();
 provideUsagePreferences();
@@ -35,8 +35,8 @@ function openPrivacy() {
 async function changeTab(tab) {
   if (!isAppTab(tab)) return;
   if (tab !== "usage") loginOpen.value = false;
-  if (tab !== "speed") speedSettingsOpen.value = false;
   if (tab === activeTab.value) return;
+  visitedTabs.add(tab);
   activeTab.value = tab;
   await nextTick();
   window.scrollTo(0, 0);
@@ -56,23 +56,25 @@ providePrivacy(openPrivacy);
       :inert="modalOpen"
       :aria-hidden="modalOpen ? 'true' : undefined"
     >
-      <div v-if="activeTab === 'usage'" class="usage-page-shell">
+      <div
+        v-if="visitedTabs.has('usage')"
+        v-show="activeTab === 'usage'"
+        class="usage-page-shell"
+      >
         <DashboardView
           v-model:login-open="loginOpen"
-          active
+          :active="activeTab === 'usage'"
         />
       </div>
-      <div
-        v-if="activeTab === 'speed' || speedTestRunning"
-        v-show="activeTab === 'speed'"
-      >
+      <div v-if="visitedTabs.has('speed')" v-show="activeTab === 'speed'">
         <SpeedTestView
           v-model:settings-open="speedSettingsOpen"
           :active="activeTab === 'speed'"
-          @update:running="speedTestRunning = $event"
         />
       </div>
-      <SettingsView v-if="activeTab === 'settings'" />
+      <div v-if="visitedTabs.has('settings')" v-show="activeTab === 'settings'">
+        <SettingsView :active="activeTab === 'settings'" />
+      </div>
     </div>
     <GlassBottomNav
       v-if="!modalOpen"
