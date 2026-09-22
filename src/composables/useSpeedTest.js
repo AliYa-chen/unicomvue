@@ -25,6 +25,7 @@ import {
   setStorageItem,
   setStorageJson,
 } from "@/services/storage";
+import { fetchSpeedTestNodes } from "@/services/speedTestNodes";
 
 const REQUEST_STALL_TIMEOUT_MS = 15_000;
 const MAX_CUSTOM_NODES = 20;
@@ -170,6 +171,9 @@ export function useSpeedTest() {
   const customNodes = ref(sanitizeCustomNodes(
     getStorageJson(SPEED_TEST_STORAGE_KEYS.customNodes, []),
   ));
+  const builtInNodeGroups = ref(SPEED_TEST_NODE_GROUPS);
+  const nodeListLoading = ref(false);
+  const nodeListError = ref("");
   const builtInUrls = new Set(SPEED_TEST_NODE_GROUPS.flatMap(
     (group) => group.options.map((option) => option.value),
   ));
@@ -180,6 +184,10 @@ export function useSpeedTest() {
   );
 
   const selectedUrl = ref(savedUrlExists ? savedUrl : SPEED_TEST_DEFAULT_URL);
+  let selectedByUser = false;
+  let applyingNodeList = false;
+  let nodeListController = null;
+  let disposed = false;
   const threadCount = ref(clampThreadCount(
     getStorageItem(SPEED_TEST_STORAGE_KEYS.threadCount, SPEED_TEST_DEFAULT_THREADS),
   ));
@@ -206,17 +214,59 @@ export function useSpeedTest() {
   let startedAt = 0;
 
   const nodeGroups = computed(() => {
-    if (!customNodes.value.length) return SPEED_TEST_NODE_GROUPS;
-    return [{ label: "自定义", options: customNodes.value }, ...SPEED_TEST_NODE_GROUPS];
+    if (!customNodes.value.length) return builtInNodeGroups.value;
+    return [{ label: "自定义", options: customNodes.value }, ...builtInNodeGroups.value];
   });
+
+  const defaultNodeUrl = computed(() => (
+    builtInNodeGroups.value[0]?.options[0]?.value
+    || customNodes.value[0]?.value
+    || ""
+  ));
 
   const selectedNodeLabel = computed(() => {
     for (const group of nodeGroups.value) {
       const node = group.options.find((option) => option.value === selectedUrl.value);
       if (node) return node.label;
     }
-    return "自定义测速地址";
+    return selectedUrl.value ? "自定义测速地址" : "请选择测速节点";
   });
+
+  async function refreshNodeGroups() {
+    nodeListController?.abort();
+    const controller = new AbortController();
+    nodeListController = controller;
+    nodeListLoading.value = true;
+    nodeListError.value = "";
+
+    try {
+      const groups = await fetchSpeedTestNodes({ signal: controller.signal });
+      if (disposed || nodeListController !== controller || controller.signal.aborted) return;
+      builtInNodeGroups.value = groups;
+
+      const availableUrls = new Set(groups.flatMap(
+        (group) => group.options.map((node) => node.value),
+      ));
+      const hasUrl = (url) => availableUrls.has(url)
+        || customNodes.value.some((node) => node.value === url);
+      const nextUrl = selectedByUser
+        ? (hasUrl(selectedUrl.value) ? selectedUrl.value : defaultNodeUrl.value)
+        : (savedUrl && hasUrl(savedUrl) ? savedUrl : defaultNodeUrl.value);
+      if (nextUrl !== selectedUrl.value) {
+        applyingNodeList = true;
+        selectedUrl.value = nextUrl;
+        applyingNodeList = false;
+      }
+    } catch {
+      if (disposed || nodeListController !== controller || controller.signal.aborted) return;
+      nodeListError.value = "节点列表暂不可用，继续使用当前列表";
+    } finally {
+      if (nodeListController === controller) {
+        nodeListController = null;
+        if (!disposed) nodeListLoading.value = false;
+      }
+    }
+  }
 
   function syncWorkerCounts() {
     startedThreads.value = workerEntries.size;
@@ -471,14 +521,15 @@ export function useSpeedTest() {
     if (!node) return false;
     customNodes.value = customNodes.value.filter((item) => item.id !== nodeId);
     setStorageJson(SPEED_TEST_STORAGE_KEYS.customNodes, customNodes.value);
-    if (selectedUrl.value === node.value) selectedUrl.value = SPEED_TEST_DEFAULT_URL;
+    if (selectedUrl.value === node.value) selectedUrl.value = defaultNodeUrl.value;
     return true;
   }
 
   watch(selectedUrl, (url, previousUrl) => {
+    if (!applyingNodeList) selectedByUser = true;
     setStorageItem(SPEED_TEST_STORAGE_KEYS.selectedUrl, url);
     if (url !== previousUrl) restartForSelectedUrl();
-  });
+  }, { flush: "sync" });
 
   watch(threadCount, (value, previousValue) => {
     const normalized = clampThreadCount(value);
@@ -490,10 +541,19 @@ export function useSpeedTest() {
     if (normalized !== previousValue) reconcileThreadCount();
   });
 
-  if (getCurrentScope()) onScopeDispose(stop);
+  void refreshNodeGroups();
+
+  if (getCurrentScope()) onScopeDispose(() => {
+    disposed = true;
+    nodeListController?.abort();
+    stop();
+  });
 
   return {
     nodeGroups,
+    nodeListLoading: readonly(nodeListLoading),
+    nodeListError: readonly(nodeListError),
+    refreshNodeGroups,
     customNodes: readonly(customNodes),
     selectedUrl,
     selectedNodeLabel,

@@ -69,6 +69,16 @@
               />
             </div>
 
+            <div v-if="nodeListLoading || nodeListError" class="mt-2 flex items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-zinc-400" role="status">
+              <span>{{ nodeListLoading ? "正在更新节点列表…" : nodeListError }}</span>
+              <button
+                v-if="nodeListError && !nodeListLoading"
+                type="button"
+                class="shrink-0 font-medium text-[var(--app-accent-600)] hover:underline dark:text-[var(--app-accent-300)]"
+                @click="emit('refresh-nodes')"
+              >重新获取</button>
+            </div>
+
             <details class="mt-3 rounded-xl border border-zinc-200 bg-white/70 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950/45">
               <summary class="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400">查看当前文件地址</summary>
               <p class="mt-2 break-all font-mono text-[10px] leading-relaxed text-zinc-400 dark:text-zinc-500">{{ selectedUrl }}</p>
@@ -246,6 +256,8 @@ const props = defineProps({
   active: { type: Boolean, default: true },
   nodeGroups: { type: Array, default: () => [] },
   customNodes: { type: Array, default: () => [] },
+  nodeListLoading: { type: Boolean, default: false },
+  nodeListError: { type: String, default: "" },
   threadCount: { type: Number, required: true },
   customError: { type: String, default: "" },
   returnFocusTarget: { type: Object, default: null },
@@ -258,6 +270,7 @@ const emit = defineEmits([
   "update:thread-count",
   "save-custom-node",
   "delete-custom-node",
+  "refresh-nodes",
 ]);
 const titleId = useId();
 const dialogRef = useTemplateRef("dialogRef");

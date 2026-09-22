@@ -26,30 +26,54 @@
         <div
           class="speed-gauge"
           :class="{ 'is-running': isRunning }"
-          :style="{ '--gauge-level': `${gaugeLevel}%` }"
         >
+          <svg
+            class="speed-gauge__scale"
+            viewBox="0 0 200 200"
+            aria-hidden="true"
+          >
+            <path
+              class="speed-gauge__track"
+              :d="GAUGE_ARC_PATH"
+              pathLength="100"
+            />
+            <path
+              class="speed-gauge__progress"
+              :class="{ 'has-progress': gaugeProgress > 0 }"
+              :d="GAUGE_ARC_PATH"
+              pathLength="100"
+              :style="{ strokeDasharray: `${gaugeProgress} 100` }"
+            />
+            <g v-for="tick in GAUGE_SCALE_TICKS" :key="tick.value">
+              <line
+                class="speed-gauge__marker"
+                :x1="tick.markerStart.x"
+                :y1="tick.markerStart.y"
+                :x2="tick.markerEnd.x"
+                :y2="tick.markerEnd.y"
+              />
+              <text
+                class="speed-gauge__label"
+                :x="tick.labelPoint.x"
+                :y="tick.labelPoint.y"
+                :transform="`rotate(${tick.rotation} ${tick.labelPoint.x} ${tick.labelPoint.y})`"
+              >{{ tick.label }}</text>
+            </g>
+          </svg>
+          <span id="live-speed-title" class="speed-gauge__caption" role="status"
+          aria-live="polite">
+            {{ selectedNodeLabel }}
+          </span>
           <div class="speed-gauge__inner">
-            <span id="live-speed-title" class="text-xs font-semibold tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
-              下载速度
-            </span>
             <span
               ref="speedValueRef"
-              class="speed-gauge__value mt-1 px-3 tabular-nums font-semibold leading-none tracking-tight"
+              class="speed-gauge__value px-3 tabular-nums font-semibold leading-none tracking-tight"
             >
               {{ formattedSpeed }}
             </span>
             <span class="mt-2 text-base font-semibold text-zinc-500 dark:text-zinc-400">Mbps</span>
           </div>
         </div>
-
-        <p
-          class="speed-description"
-          role="status"
-          aria-live="polite"
-        >
-          {{ selectedNodeLabel }}
-        </p>
-
         <NetworkStatusBar
           class="speed-network-status"
           :profile="networkProfile"
@@ -61,9 +85,8 @@
         />
 
         <div class="speed-chart-wrap">
-          <div class="speed-chart-heading mb-2 flex items-center justify-between gap-3">
+          <div class="speed-chart-heading mb-2">
             <h2 class="text-sm font-semibold">测速曲线</h2>
-            <span class="truncate text-xs text-zinc-500 dark:text-zinc-400">字节 / 秒</span>
           </div>
           <div class="speed-chart" role="img" :aria-label="chartAriaLabel">
             <div class="speed-chart__axis" aria-hidden="true">
@@ -170,12 +193,15 @@
     :active="active"
     :node-groups="nodeGroups"
     :custom-nodes="customNodes"
+    :node-list-loading="nodeListLoading"
+    :node-list-error="nodeListError"
     :thread-count="threadCount"
     :custom-error="customError"
     :return-focus-target="settingsButtonRef"
     @update:thread-count="setThreadCount"
     @save-custom-node="saveCustomNode"
     @delete-custom-node="removeCustomNode"
+    @refresh-nodes="refreshNodeGroups"
   />
 </template>
 
@@ -219,10 +245,47 @@ const BYTE_RATE_UNITS = Object.freeze(["B/s", "KiB/s", "MiB/s", "GiB/s", "TiB/s"
 const CHART_TICK_INTERVALS = 4;
 const CHART_TOP = 8;
 const CHART_BOTTOM = 112;
+const GAUGE_CENTER = 100;
+const GAUGE_RADIUS = 91;
+const GAUGE_START_ANGLE = 135;
+const GAUGE_SWEEP_ANGLE = 270;
+const GAUGE_SCALE_VALUES = Object.freeze([
+  Object.freeze({ value: 0, label: "0" }),
+  Object.freeze({ value: 5, label: "5" }),
+  Object.freeze({ value: 10, label: "10" }),
+  Object.freeze({ value: 20, label: "20" }),
+  Object.freeze({ value: 50, label: "50" }),
+  Object.freeze({ value: 100, label: "100" }),
+  Object.freeze({ value: 200, label: "200" }),
+  Object.freeze({ value: 500, label: "500" }),
+  Object.freeze({ value: 1000, label: "1G" }),
+  Object.freeze({ value: 2000, label: "2G" }),
+  Object.freeze({ value: 5000, label: "5G" }),
+]);
+const gaugeArcStart = polarPoint(GAUGE_RADIUS, GAUGE_START_ANGLE);
+const gaugeArcEnd = polarPoint(GAUGE_RADIUS, GAUGE_START_ANGLE + GAUGE_SWEEP_ANGLE);
+const GAUGE_ARC_PATH = [
+  `M ${gaugeArcStart.x} ${gaugeArcStart.y}`,
+  `A ${GAUGE_RADIUS} ${GAUGE_RADIUS} 0 1 1 ${gaugeArcEnd.x} ${gaugeArcEnd.y}`,
+].join(" ");
+const GAUGE_SCALE_TICKS = Object.freeze(GAUGE_SCALE_VALUES.map((item, index) => {
+  const ratio = index / (GAUGE_SCALE_VALUES.length - 1);
+  const angle = GAUGE_START_ANGLE + ratio * GAUGE_SWEEP_ANGLE;
+  return Object.freeze({
+    ...item,
+    markerStart: Object.freeze(polarPoint(78, angle)),
+    markerEnd: Object.freeze(polarPoint(84, angle)),
+    labelPoint: Object.freeze(polarPoint(68, angle)),
+    rotation: uprightTangentRotation(angle),
+  });
+}));
 
 const {
   nodeGroups,
   customNodes,
+  nodeListLoading,
+  nodeListError,
+  refreshNodeGroups,
   selectedUrl,
   selectedNodeLabel,
   threadCount,
@@ -248,10 +311,7 @@ const formattedElapsed = computed(() => {
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 });
-const gaugeLevel = computed(() => {
-  if (!isRunning.value || currentMbps.value <= 0) return 0;
-  return Math.min(100, 18 + Math.log10(currentMbps.value + 1) * 34);
-});
+const gaugeProgress = computed(() => mapGaugeProgress(currentMbps.value));
 const phaseLabel = computed(() => {
   if (phase.value === "starting") return "正在连接";
   if (phase.value === "running") return "持续测速中";
@@ -260,26 +320,22 @@ const phaseLabel = computed(() => {
   return "准备就绪";
 });
 const chartSamples = computed(() => samples.value.slice(-60));
-const chartMaximumMbps = computed(() => Math.max(
-  0,
-  Number.isFinite(peakMbps.value) ? peakMbps.value : 0,
-  ...chartSamples.value.map((sample) => (
-    Number.isFinite(sample.mbps) && sample.mbps > 0 ? sample.mbps : 0
-  )),
+const chartPeakMbps = computed(() => (
+  Number.isFinite(peakMbps.value) && peakMbps.value > 0 ? peakMbps.value : 0
 ));
-const chartScaleMaxBytesPerSecond = computed(() => {
-  const paddedBytesPerSecond = chartMaximumMbps.value * BYTES_PER_MEGABIT * 1.12;
-  return getNiceByteRateMaximum(paddedBytesPerSecond);
-});
+const hasChartData = computed(() => (
+  chartPeakMbps.value > 0
+  && chartSamples.value.some((sample) => Number.isFinite(sample.mbps) && sample.mbps > 0)
+));
 const chartTicks = computed(() => {
-  if (chartMaximumMbps.value <= 0) {
+  if (!hasChartData.value) {
     return [{ label: "0 B/s", position: (CHART_BOTTOM / 120) * 100 }];
   }
   return Array.from(
     { length: CHART_TICK_INTERVALS + 1 },
     (_, index) => {
       const ratio = index / CHART_TICK_INTERVALS;
-      const value = chartScaleMaxBytesPerSecond.value * (1 - ratio);
+      const value = chartPeakMbps.value * BYTES_PER_MEGABIT * (1 - ratio);
       return {
         label: formatByteRate(value),
         position: ((CHART_TOP + ratio * (CHART_BOTTOM - CHART_TOP)) / 120) * 100,
@@ -289,12 +345,12 @@ const chartTicks = computed(() => {
 });
 const chartPoints = computed(() => {
   const values = chartSamples.value;
-  if (values.length < 2) return [];
+  if (!hasChartData.value || values.length < 2) return [];
   return values.map((sample, index) => {
     const mbps = Number.isFinite(sample.mbps) && sample.mbps > 0 ? sample.mbps : 0;
     const ratio = Math.min(
       1,
-      mbps * BYTES_PER_MEGABIT / chartScaleMaxBytesPerSecond.value,
+      mbps / chartPeakMbps.value,
     );
     return {
       x: 8 + (index / (values.length - 1)) * 624,
@@ -308,8 +364,8 @@ const chartLine = computed(() => chartPoints.value.map((point, index) => (
 const chartArea = computed(() => chartPoints.value.length
   ? `${chartLine.value} L${chartPoints.value.at(-1).x.toFixed(1)},${CHART_BOTTOM} L8,${CHART_BOTTOM} Z`
   : "");
-const chartAriaLabel = computed(() => samples.value.length
-  ? `最近下载速度 ${formatSpeed(currentMbps.value)} Mbps（${formatByteRate(currentMbps.value * BYTES_PER_MEGABIT)}），峰值 ${formatSpeed(peakMbps.value)} Mbps（${formatByteRate(peakMbps.value * BYTES_PER_MEGABIT)}），纵轴最高 ${formatByteRate(chartScaleMaxBytesPerSecond.value)}`
+const chartAriaLabel = computed(() => hasChartData.value
+  ? `最近下载速度 ${formatSpeed(currentMbps.value)} Mbps，本次峰值 ${formatSpeed(chartPeakMbps.value)} Mbps，纵轴最高 ${formatByteRate(chartPeakMbps.value * BYTES_PER_MEGABIT)}`
   : "尚无测速数据；开始测速后显示最近下载速度曲线");
 
 function formatSpeed(value) {
@@ -319,42 +375,6 @@ function formatSpeed(value) {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   }).format(value);
-}
-
-function getNiceNumber(value) {
-  if (!Number.isFinite(value) || value <= 0) return 1;
-  const magnitude = 10 ** Math.floor(Math.log10(value));
-  const normalized = value / magnitude;
-  const factor = normalized <= 1
-    ? 1
-    : normalized <= 2
-      ? 2
-      : normalized <= 2.5
-        ? 2.5
-        : normalized <= 5
-          ? 5
-          : 10;
-  return factor * magnitude;
-}
-
-function getNiceByteRateMaximum(value) {
-  const bytesPerSecond = Math.max(1, Number(value) || 0);
-  let unitIndex = Math.min(
-    BYTE_RATE_UNITS.length - 1,
-    Math.max(0, Math.floor(Math.log(bytesPerSecond) / Math.log(1024))),
-  );
-  let unitSize = 1024 ** unitIndex;
-  let step = getNiceNumber(bytesPerSecond / unitSize / CHART_TICK_INTERVALS);
-  let maximum = step * CHART_TICK_INTERVALS * unitSize;
-
-  if (maximum >= unitSize * 1024 && unitIndex < BYTE_RATE_UNITS.length - 1) {
-    unitIndex += 1;
-    unitSize = 1024 ** unitIndex;
-    step = getNiceNumber(bytesPerSecond / unitSize / CHART_TICK_INTERVALS);
-    maximum = step * CHART_TICK_INTERVALS * unitSize;
-  }
-
-  return Math.max(1, maximum);
 }
 
 function formatByteRate(value) {
@@ -368,6 +388,38 @@ function formatByteRate(value) {
   const amount = bytesPerSecond / (1024 ** unitIndex);
   const fractionDigits = amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
   return `${Number(amount.toFixed(fractionDigits))} ${BYTE_RATE_UNITS[unitIndex]}`;
+}
+
+function polarPoint(radius, angle) {
+  const radians = angle * (Math.PI / 180);
+  return {
+    x: Number((GAUGE_CENTER + radius * Math.cos(radians)).toFixed(3)),
+    y: Number((GAUGE_CENTER + radius * Math.sin(radians)).toFixed(3)),
+  };
+}
+
+function uprightTangentRotation(angle) {
+  let rotation = angle + 90;
+  while (rotation > 90) rotation -= 180;
+  while (rotation < -90) rotation += 180;
+  return rotation;
+}
+
+function mapGaugeProgress(value) {
+  const speed = Math.min(5000, Math.max(0, Number(value) || 0));
+  if (speed <= 0) return 0;
+
+  for (let index = 1; index < GAUGE_SCALE_VALUES.length; index += 1) {
+    const lower = GAUGE_SCALE_VALUES[index - 1].value;
+    const upper = GAUGE_SCALE_VALUES[index].value;
+    if (speed > upper) continue;
+    const segment = upper === lower ? 0 : (speed - lower) / (upper - lower);
+    return Number((
+      ((index - 1 + segment) / (GAUGE_SCALE_VALUES.length - 1)) * 100
+    ).toFixed(3));
+  }
+
+  return 100;
 }
 
 function fitSpeedValue() {
@@ -420,6 +472,7 @@ function saveCustomNode() {
 
 function openSettings() {
   settingsOpen.value = true;
+  void refreshNodeGroups();
 }
 
 watch(() => formattedSpeed.value.length, async () => {
@@ -482,7 +535,6 @@ onBeforeUnmount(() => {
 }
 
 .speed-gauge {
-  --gauge-level: 0%;
   position: relative;
   display: grid;
   width: clamp(11.75rem, 24dvh, 14rem);
@@ -490,16 +542,14 @@ onBeforeUnmount(() => {
   margin-inline: auto;
   place-items: center;
   border-radius: 999px;
-  background: conic-gradient(from -90deg, var(--app-accent-500) 0 var(--gauge-level), #e4e4e7 var(--gauge-level) 100%);
-  box-shadow: 0 16px 50px color-mix(in srgb, var(--app-accent-500) 12%, transparent);
-  transition: background 300ms ease;
+  background: transparent;
 }
 
 .speed-gauge::before {
   position: absolute;
   inset: -8%;
   border-radius: inherit;
-  background: radial-gradient(circle, color-mix(in srgb, var(--app-accent-500) 11%, transparent), transparent 66%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--app-accent-500) 9%, transparent), transparent 64%);
   content: "";
   filter: blur(16px);
   opacity: 0;
@@ -508,18 +558,78 @@ onBeforeUnmount(() => {
 
 .speed-gauge.is-running::before { opacity: 1; }
 
+.speed-gauge__scale {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.speed-gauge__track,
+.speed-gauge__progress {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 12;
+  vector-effect: non-scaling-stroke;
+}
+
+.speed-gauge__track {
+  stroke: color-mix(in srgb, var(--color-zinc-400) 36%, transparent);
+}
+
+.speed-gauge__progress {
+  opacity: 0;
+  stroke: var(--app-accent-500);
+  transition: stroke-dasharray 220ms ease, opacity 160ms ease;
+  filter: drop-shadow(0 3px 7px color-mix(in srgb, var(--app-accent-500) 28%, transparent));
+}
+
+.speed-gauge__progress.has-progress { opacity: 1; }
+
+.speed-gauge__marker {
+  stroke: color-mix(in srgb, var(--color-zinc-500) 36%, transparent);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.speed-gauge__label {
+  fill: var(--color-zinc-500);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 8px;
+  font-weight: 650;
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-variant-numeric: tabular-nums;
+}
+
+.speed-gauge__caption {
+  position: absolute;
+  bottom: 0.35rem;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  color: var(--color-zinc-500);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1rem;
+  white-space: nowrap;
+}
+
 .speed-gauge__inner {
   position: absolute;
-  inset: 0.7rem;
-  z-index: 1;
+  inset: 22%;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   overflow: hidden;
   border-radius: inherit;
-  background: radial-gradient(circle at 50% 25%, rgb(255 255 255 / 100%), rgb(250 250 250 / 98%) 72%);
-  box-shadow: inset 0 2px 10px color-mix(in srgb, var(--app-accent-500) 7%, transparent);
+  background: radial-gradient(circle, rgb(255 255 255 / 48%), transparent 74%);
 }
 
 .speed-gauge__value {
@@ -642,14 +752,14 @@ onBeforeUnmount(() => {
 .speed-action:active { transform: scale(0.99); }
 .speed-action:focus-visible { outline: 2px solid var(--color-indigo-500); outline-offset: 2px; }
 
-:global(.dark .speed-gauge) {
-  background: conic-gradient(from -90deg, var(--app-accent-400) 0 var(--gauge-level), #3f3f46 var(--gauge-level) 100%);
-  box-shadow: 0 16px 50px color-mix(in srgb, var(--app-accent-500) 10%, transparent);
-}
+:global(.dark .speed-gauge__track) { stroke: rgb(255 255 255 / 18%); }
+:global(.dark .speed-gauge__progress) { stroke: var(--app-accent-400); }
+:global(.dark .speed-gauge__marker) { stroke: rgb(255 255 255 / 28%); }
+:global(.dark .speed-gauge__label) { fill: var(--color-zinc-300); }
+:global(.dark .speed-gauge__caption) { color: var(--color-zinc-300); }
 
 :global(.dark .speed-gauge__inner) {
-  background: radial-gradient(circle at 50% 25%, rgb(39 39 42 / 100%), rgb(24 24 27 / 99%) 72%);
-  box-shadow: inset 0 2px 10px rgb(0 0 0 / 20%);
+  background: radial-gradient(circle, rgb(24 24 27 / 52%), transparent 74%);
   color: #f4f4f5;
 }
 
@@ -708,6 +818,6 @@ onBeforeUnmount(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .speed-running-bar.is-running { animation: none; transform: translateX(70%); }
-  .speed-gauge, .speed-gauge::before { transition: none; }
+  .speed-gauge::before, .speed-gauge__progress { transition: none; }
 }
 </style>

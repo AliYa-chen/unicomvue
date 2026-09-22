@@ -54,7 +54,6 @@
       class="network-status-bar__tooltip"
       role="tooltip"
     >
-      <span class="network-status-bar__tooltip-label">公网 IP</span>
       <code
         class="network-status-bar__tooltip-value"
         :class="{ 'is-placeholder': !publicIpAvailable }"
@@ -384,7 +383,6 @@ onBeforeUnmount(() => {
   z-index: 20;
   display: grid;
   width: max-content;
-  min-width: 9.5rem;
   max-width: min(18rem, calc(100vw - 2rem));
   transform: translateX(-50%);
   gap: 0.2rem;
