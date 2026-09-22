@@ -4,19 +4,20 @@ import {
   onScopeDispose,
   readonly,
   ref,
+  watch,
 } from "vue";
 import {
   NETWORK_INFO_REFRESH_MS,
   NETWORK_INFO_RETRY_MS,
   NETWORK_LATENCY_INITIAL_SAMPLES,
   NETWORK_LATENCY_INTERVAL_MS,
+  NETWORK_LOADING_DELAY_MS,
   NETWORK_ROUTE_INTERVAL_MS,
 } from "@/config/networkStatus";
 import {
   EMPTY_NETWORK_PROFILE,
   hasNetworkProfileDetails,
   medianMeasurement,
-  networkRegionName,
   networkTraceFingerprint,
   normalizeNetworkProfile,
   resolveConnectionLabel,
@@ -48,9 +49,13 @@ export function useNetworkStatus() {
   const profileError = ref("");
   const latencyError = ref("");
   const offline = ref(globalThis.navigator?.onLine === false);
+  const loading = ref(false);
+  const profileResolvedOnce = ref(false);
 
   let profileUpdatedAt = 0;
   let latencySamples = [];
+  let latencyWarmupNeeded = true;
+  let currentRouteKind = "unknown";
   let currentTrace = null;
   let profileTimer = null;
   let latencyTimer = null;
@@ -58,21 +63,20 @@ export function useNetworkStatus() {
   let profileController = null;
   let latencyController = null;
   let routeController = null;
+  let loadingDelayTimer = null;
   let runGeneration = 0;
   let disposed = false;
 
-  const hasProfile = computed(() => hasNetworkProfileDetails(profile.value));
-  const loading = computed(() => (
+  const requestPending = computed(() => (
     !offline.value
-    && (
-      (latencyMs.value === null && latencyLoading.value)
-      || (!hasProfile.value && profileLoading.value)
-    )
+    && (profileLoading.value || latencyLoading.value)
   ));
   const failed = computed(() => (
     !offline.value
     && !loading.value
-    && Boolean(profileError.value || latencyError.value)
+    && !profileResolvedOnce.value
+    && !profileLoading.value
+    && Boolean(profileError.value)
   ));
 
   function shouldRun() {
@@ -86,9 +90,11 @@ export function useNetworkStatus() {
     if (profileTimer !== null) clearTimeout(profileTimer);
     if (latencyTimer !== null) clearTimeout(latencyTimer);
     if (routeTimer !== null) clearTimeout(routeTimer);
+    if (loadingDelayTimer !== null) clearTimeout(loadingDelayTimer);
     profileTimer = null;
     latencyTimer = null;
     routeTimer = null;
+    loadingDelayTimer = null;
   }
 
   function stopRequests() {
@@ -102,6 +108,7 @@ export function useNetworkStatus() {
     routeController = null;
     profileLoading.value = false;
     latencyLoading.value = false;
+    loading.value = false;
   }
 
   function scheduleProfileRefresh(generation) {
@@ -118,7 +125,7 @@ export function useNetworkStatus() {
     if (
       shouldRun()
       && generation === runGeneration
-      && profile.value.routeKind !== "international"
+      && currentRouteKind !== "international"
       && !latencyController
       && latencyTimer === null
     ) {
@@ -126,7 +133,7 @@ export function useNetworkStatus() {
         if (
           shouldRun()
           && generation === runGeneration
-          && profile.value.routeKind !== "international"
+          && currentRouteKind !== "international"
           && !latencyController
           && latencyTimer === null
         ) {
@@ -142,17 +149,21 @@ export function useNetworkStatus() {
     latencyController?.abort();
     latencyController = null;
     latencySamples = [];
-    latencyMs.value = null;
+    latencyWarmupNeeded = true;
     latencyError.value = "";
-    latencyLoading.value = profile.value.routeKind !== "international";
+    latencyLoading.value = false;
     startLatencyIfNeeded(generation);
   }
 
-  function commitProfile(nextProfile, generation) {
+  function commitProfile(nextProfile, generation, { resolved = false } = {}) {
     if (!nextProfile || generation !== runGeneration) return;
-    const routeChanged = profile.value.routeKind !== nextProfile.routeKind;
+    const routeChanged = currentRouteKind !== nextProfile.routeKind;
+    currentRouteKind = nextProfile.routeKind;
     profile.value = nextProfile;
-    profileUpdatedAt = Date.now();
+    if (resolved) {
+      profileResolvedOnce.value = true;
+      profileUpdatedAt = Date.now();
+    }
     profileError.value = "";
     if (routeChanged) resetLatencyTarget(generation);
   }
@@ -160,6 +171,7 @@ export function useNetworkStatus() {
   function recordLatency(sample) {
     if (!Number.isFinite(sample)) return;
     latencySamples = [...latencySamples, sample].slice(-NETWORK_LATENCY_INITIAL_SAMPLES);
+    latencyWarmupNeeded = false;
     latencyMs.value = medianMeasurement(latencySamples);
     latencyError.value = "";
     latencyLoading.value = false;
@@ -206,7 +218,7 @@ export function useNetworkStatus() {
             routeLabel: tracedRouteKind === "international" ? "国际线路" : "",
           };
       if (!hasNetworkProfileDetails(nextProfile)) throw new Error("网络信息查询失败");
-      commitProfile(nextProfile, generation);
+      commitProfile(nextProfile, generation, { resolved: true });
     } catch (error) {
       if (!controller.signal.aborted && generation === runGeneration) {
         profileError.value = getErrorMessage(error, "网络信息查询失败");
@@ -238,24 +250,13 @@ export function useNetworkStatus() {
         nextFingerprint
         && nextFingerprint !== previousFingerprint
       );
-      if (traceChanged && profile.value.publicIp) {
-        profile.value = { ...profile.value, publicIp: "" };
-      }
-
       const detectedRouteKind = routeKindFromCountryCode(trace.countryCode);
       if (
         detectedRouteKind !== "unknown"
-        && profile.value.routeKind !== detectedRouteKind
+        && currentRouteKind !== detectedRouteKind
       ) {
-        commitProfile({
-          ...profile.value,
-          locationLabel: detectedRouteKind === "international"
-            ? networkRegionName(trace.countryCode)
-            : "",
-          carrierLabel: "",
-          routeKind: detectedRouteKind,
-          routeLabel: detectedRouteKind === "international" ? "国际线路" : "",
-        }, generation);
+        currentRouteKind = detectedRouteKind;
+        resetLatencyTarget(generation);
       }
 
       if (detectedRouteKind === "international") recordLatency(trace.latencyMs);
@@ -279,17 +280,17 @@ export function useNetworkStatus() {
     if (
       !shouldRun()
       || generation !== runGeneration
-      || profile.value.routeKind === "international"
+      || currentRouteKind === "international"
     ) return;
     const cycleStartedAt = performance.now();
     latencyController?.abort();
     const controller = new AbortController();
     latencyController = controller;
-    latencyLoading.value = latencyMs.value === null;
+    latencyLoading.value = true;
     latencyError.value = "";
     try {
       // The first request establishes DNS/TLS and is intentionally not shown.
-      if (latencyMs.value === null) {
+      if (latencyWarmupNeeded) {
         await measureNetworkLatency(controller.signal);
       }
       const sample = await measureNetworkLatency(controller.signal);
@@ -297,18 +298,18 @@ export function useNetworkStatus() {
       recordLatency(sample);
     } catch (error) {
       if (!controller.signal.aborted && generation === runGeneration) {
-        latencySamples = [];
-        latencyMs.value = null;
         latencyError.value = getErrorMessage(error, "网络延迟测量失败");
       }
     } finally {
-      if (latencyController === controller) latencyController = null;
-      if (generation === runGeneration) latencyLoading.value = false;
+      if (latencyController === controller) {
+        latencyController = null;
+        if (generation === runGeneration) latencyLoading.value = false;
+      }
       if (
         !controller.signal.aborted
         && shouldRun()
         && generation === runGeneration
-        && profile.value.routeKind !== "international"
+        && currentRouteKind !== "international"
       ) {
         latencyTimer = setTimeout(
           () => {
@@ -328,14 +329,16 @@ export function useNetworkStatus() {
     offline.value = false;
     if (resetProfile) {
       profile.value = {
-        ...EMPTY_NETWORK_PROFILE,
-        networkTypeLabel: currentConnectionLabel(),
+        ...profile.value,
+        networkTypeLabel: currentConnectionLabel() || profile.value.networkTypeLabel,
       };
       profileUpdatedAt = 0;
       profileError.value = "";
+      currentRouteKind = "unknown";
       currentTrace = null;
       latencySamples = [];
-      latencyMs.value = null;
+      latencyWarmupNeeded = true;
+      latencyError.value = "";
     }
     void runRouteCycle(generation);
     void refreshProfile(forceProfile, generation).finally(() => {
@@ -354,8 +357,10 @@ export function useNetworkStatus() {
 
   function handleOffline() {
     offline.value = true;
+    currentRouteKind = "unknown";
     currentTrace = null;
     latencySamples = [];
+    latencyWarmupNeeded = true;
     latencyMs.value = null;
     stopRequests();
   }
@@ -363,6 +368,43 @@ export function useNetworkStatus() {
   function handleConnectionChange() {
     if (shouldRun()) startMonitoring({ forceProfile: true, resetProfile: true });
   }
+
+  function syncLoadingVisibility() {
+    if (loadingDelayTimer !== null) clearTimeout(loadingDelayTimer);
+    loadingDelayTimer = null;
+
+    if (offline.value || !requestPending.value) {
+      loading.value = false;
+      return;
+    }
+
+    if (!profileResolvedOnce.value && profileLoading.value) {
+      loading.value = true;
+      return;
+    }
+
+    // Once a snapshot exists, keep rendering it while requests refresh in the
+    // background. Only expose a loading state for an unusually slow refresh.
+    loading.value = false;
+    const generation = runGeneration;
+    loadingDelayTimer = setTimeout(() => {
+      loadingDelayTimer = null;
+      if (
+        !disposed
+        && generation === runGeneration
+        && requestPending.value
+        && !offline.value
+      ) {
+        loading.value = true;
+      }
+    }, NETWORK_LOADING_DELAY_MS);
+  }
+
+  watch(
+    [requestPending, profileResolvedOnce, offline],
+    syncLoadingVisibility,
+    { immediate: true, flush: "sync" },
+  );
 
   if (shouldRun()) startMonitoring();
   window.addEventListener("online", handleOnline);
@@ -382,7 +424,7 @@ export function useNetworkStatus() {
   return {
     profile: readonly(profile),
     latencyMs: readonly(latencyMs),
-    loading,
+    loading: readonly(loading),
     failed,
     offline: readonly(offline),
     profileError: readonly(profileError),

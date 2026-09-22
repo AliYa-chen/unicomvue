@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref } from "vue";
+import { computed, defineAsyncComponent, nextTick, ref } from "vue";
 import GlassBottomNav from "@/components/app/GlassBottomNav.vue";
 import SpotlightBackground from "@/components/app/SpotlightBackground.vue";
 import PrivacyModal from "@/components/privacy/PrivacyModal.vue";
@@ -8,13 +8,15 @@ import { provideTheme } from "@/composables/useTheme";
 import { provideUsagePreferences } from "@/composables/useUsagePreferences";
 import { DEFAULT_APP_TAB, isAppTab } from "@/config/appNavigation";
 import { provideAccountStore } from "@/stores/accountStore";
-import DashboardView from "@/views/DashboardView.vue";
-import SettingsView from "@/views/SettingsView.vue";
-import SpeedTestView from "@/views/SpeedTestView.vue";
+
+const DashboardView = defineAsyncComponent(() => import("@/views/DashboardView.vue"));
+const SpeedTestView = defineAsyncComponent(() => import("@/views/SpeedTestView.vue"));
+const SettingsView = defineAsyncComponent(() => import("@/views/SettingsView.vue"));
 
 const privacyOpen = ref(false);
 const loginOpen = ref(false);
 const speedSettingsOpen = ref(false);
+const speedTestRunning = ref(false);
 const activeTab = ref(DEFAULT_APP_TAB);
 const theme = provideTheme();
 provideAccountStore();
@@ -33,6 +35,7 @@ function openPrivacy() {
 async function changeTab(tab) {
   if (!isAppTab(tab)) return;
   if (tab !== "usage") loginOpen.value = false;
+  if (tab !== "speed") speedSettingsOpen.value = false;
   if (tab === activeTab.value) return;
   activeTab.value = tab;
   await nextTick();
@@ -53,16 +56,20 @@ providePrivacy(openPrivacy);
       :inert="modalOpen"
       :aria-hidden="modalOpen ? 'true' : undefined"
     >
-      <div v-show="activeTab === 'usage'" class="usage-page-shell">
+      <div v-if="activeTab === 'usage'" class="usage-page-shell">
         <DashboardView
           v-model:login-open="loginOpen"
-          :active="activeTab === 'usage'"
+          active
         />
       </div>
-      <div v-show="activeTab === 'speed'">
+      <div
+        v-if="activeTab === 'speed' || speedTestRunning"
+        v-show="activeTab === 'speed'"
+      >
         <SpeedTestView
           v-model:settings-open="speedSettingsOpen"
           :active="activeTab === 'speed'"
+          @update:running="speedTestRunning = $event"
         />
       </div>
       <SettingsView v-if="activeTab === 'settings'" />

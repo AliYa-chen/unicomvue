@@ -135,6 +135,7 @@ import {
 } from "@/domain/speedMetrics";
 
 const props = defineProps({ active: { type: Boolean, default: false } });
+const emit = defineEmits(["update:running"]);
 const settingsOpen = defineModel("settingsOpen", { type: Boolean, default: false });
 const settingsButtonRef = useTemplateRef("settingsButtonRef");
 const customLabel = ref("");
@@ -200,6 +201,10 @@ function openSettings() {
 watch(settingsOpen, (open) => {
   if (open) customError.value = "";
 });
+
+watch(isRunning, (running) => {
+  emit("update:running", running);
+}, { immediate: true });
 
 watch(() => props.active, (active) => {
   if (!active) settingsOpen.value = false;
