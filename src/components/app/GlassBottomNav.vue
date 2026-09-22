@@ -1,7 +1,14 @@
 <template>
   <nav class="glass-bottom-nav" :style="navSafeAreaStyle" aria-label="主导航">
-    <div class="glass-bottom-nav__surface" :class="{ 'is-fallback': !glassReady }">
+    <div
+      class="glass-bottom-nav__surface"
+      :class="{
+        'is-fallback': isIOS || !glassReady,
+        'uses-wallpaper': !isIOS && !isDark,
+      }"
+    >
       <div
+        v-if="!isIOS"
         ref="glassHostRef"
         class="glass-bottom-nav__engine"
         :style="engineOverscanStyle"
@@ -39,7 +46,10 @@ import {
 } from "vue";
 import { useTheme } from "@/composables/useTheme";
 import { APP_TABS, APP_TAB_VALUES, isAppTab } from "@/config/appNavigation";
-import { createLiquidGlassMask } from "@/utils/liquidGlassWallpaper";
+import {
+  createLiquidGlassMask,
+  createLiquidGlassWallpaper,
+} from "@/utils/liquidGlassWallpaper";
 import {
   applyLiquidGlassMaxQuality,
   disposeLiquidGlassElement,
@@ -69,12 +79,11 @@ const props = defineProps({
 });
 const emit = defineEmits(["change"]);
 const { isDark } = useTheme();
+const isIOS = detectIOS();
 const glassHostRef = useTemplateRef("glassHostRef");
 const glassReady = ref(false);
 const engineMask = ref("");
 const engineOverscanStyle = computed(() => ({
-  "--glass-engine-overscan-x": `${ENGINE_OVERSCAN_X}px`,
-  "--glass-engine-overscan-y": `${ENGINE_OVERSCAN_Y}px`,
   "--glass-engine-mask": engineMask.value ? `url("${engineMask.value}")` : "none",
 }));
 const fallbackIndicatorTransform = computed(() => `translateX(${activeIndex() * 100}%)`);
@@ -91,29 +100,45 @@ let mountRetryTimer = null;
 let assetRefreshFrame = 0;
 let engineResizeObserver = null;
 
+function detectIOS() {
+  const device = globalThis.navigator;
+  if (!device) return false;
+  return /iPad|iPhone|iPod/i.test(device.userAgent || "")
+    || (device.platform === "MacIntel" && device.maxTouchPoints > 1);
+}
+
 function activeIndex() {
   return Math.max(0, APP_TAB_VALUES.indexOf(props.activeTab));
 }
 
-function buildEngineAssets() {
+function buildWallpaperAssets() {
   const bounds = glassHostRef.value?.getBoundingClientRect();
   const width = bounds?.width || NAV_WIDTH + ENGINE_OVERSCAN_X * 2;
   const height = bounds?.height || NAV_HEIGHT + ENGINE_OVERSCAN_Y * 2;
-  return createLiquidGlassMask(
-    width,
-    height,
-    ENGINE_OVERSCAN_X,
-    ENGINE_OVERSCAN_Y,
-    NAV_HEIGHT,
-  );
+  return {
+    mask: createLiquidGlassMask(
+      width,
+      height,
+      ENGINE_OVERSCAN_X,
+      ENGINE_OVERSCAN_Y,
+      NAV_HEIGHT,
+    ),
+    wallpaper: createLiquidGlassWallpaper(width, height, false),
+  };
 }
 
 function refreshEngineAssets() {
   assetRefreshFrame = 0;
   if (!mounted) return;
-  engineMask.value = buildEngineAssets();
   if (!glassElement) return;
   applyLiquidGlassMaxQuality(glassElement);
+  if (!isDark.value) {
+    const assets = buildWallpaperAssets();
+    engineMask.value = assets.mask;
+    if (glassElement.getAttribute("wallpaper") !== assets.wallpaper) {
+      glassElement.setAttribute("wallpaper", assets.wallpaper);
+    }
+  }
 }
 
 function scheduleEngineAssetRefresh() {
@@ -151,7 +176,7 @@ function clearMountRetry() {
 }
 
 function scheduleMountRetry() {
-  if (!mounted || glassElement || mountRetryTimer !== null || mountRetryCount >= MAX_MOUNT_RETRIES) return;
+  if (isIOS || !mounted || glassElement || mountRetryTimer !== null || mountRetryCount >= MAX_MOUNT_RETRIES) return;
   const delay = MOUNT_RETRY_DELAYS_MS[mountRetryCount];
   mountRetryCount += 1;
   mountRetryTimer = setTimeout(() => {
@@ -199,9 +224,8 @@ async function waitForEngineReady(element, generation) {
     }
     if (
       engineConnected
-      && element._renderer?.transparentBackdrop
-      && element._renderer.wallpaperReady
-      && element._renderer.transparentFrameReady
+      && element._renderer?.wallpaperReady
+      && (!element._renderer.transparentBackdrop || element._renderer.transparentFrameReady)
       && element._elements?.length
     ) {
       return true;
@@ -212,7 +236,7 @@ async function waitForEngineReady(element, generation) {
 
 async function mountGlassElement() {
   const host = glassHostRef.value;
-  if (!host || !mounted || glassElement) return;
+  if (isIOS || !host || !mounted || glassElement) return;
   const generation = ++mountGeneration;
   const loaded = await loadLiquidGlass();
   if (!mounted || generation !== mountGeneration || host !== glassHostRef.value || glassElement) return;
@@ -223,13 +247,19 @@ async function mountGlassElement() {
 
   try {
     engineConnected = false;
-    engineMask.value = buildEngineAssets();
     const element = document.createElement("liquid-glass");
     glassElement = element;
     applyLiquidGlassMaxQuality(element);
     element.setAttribute("corner-style", "1");
-    element.setAttribute("transparent-backdrop", "");
     element.setAttribute("mode", "single-bottom-tabs");
+    if (isDark.value) {
+      engineMask.value = "";
+      element.setAttribute("transparent-backdrop", "");
+    } else {
+      const assets = buildWallpaperAssets();
+      engineMask.value = assets.mask;
+      element.setAttribute("wallpaper", assets.wallpaper);
+    }
     element.toggleAttribute("dark", isDark.value);
     element.addEventListener("lg-statechange", onGlassStateChange);
 
@@ -275,7 +305,7 @@ function destroyGlassElement() {
 
 watch(() => props.activeTab, syncEngineSelection);
 watch(isDark, async () => {
-  if (!mounted) return;
+  if (isIOS || !mounted) return;
   clearMountRetry();
   mountRetryCount = 0;
   destroyGlassElement();
@@ -285,6 +315,7 @@ watch(isDark, async () => {
 
 onMounted(() => {
   mounted = true;
+  if (isIOS) return;
   if (typeof ResizeObserver !== "undefined" && glassHostRef.value) {
     engineResizeObserver = new ResizeObserver(scheduleEngineAssetRefresh);
     engineResizeObserver.observe(glassHostRef.value);
@@ -322,30 +353,34 @@ onBeforeUnmount(() => {
 .glass-bottom-nav__surface {
   position: relative;
   height: 64px;
-  isolation: isolate;
 }
 .glass-bottom-nav__surface::before {
   position: absolute;
   z-index: 0;
   inset: 0;
-  border: 1px solid rgb(255 255 255 / 42%);
+  border: 1px solid rgb(255 255 255 / 14%);
   border-radius: 999px;
-  background: rgb(255 255 255 / 12%);
-  box-shadow: 0 10px 28px rgb(24 24 27 / 10%);
+  background: rgb(255 255 255 / 6%);
+  box-shadow: 0 8px 22px rgb(24 24 27 / 6%);
   content: "";
   pointer-events: none;
   -webkit-backdrop-filter: blur(18px) saturate(1.35);
   backdrop-filter: blur(18px) saturate(1.35);
-  clip-path: inset(0 round 999px);
+}
+.glass-bottom-nav__surface.is-fallback::before {
+  border-color: rgb(255 255 255 / 32%);
+  background: rgb(244 244 245 / 24%);
 }
 .glass-bottom-nav__engine {
   position: absolute;
   z-index: 1;
-  inset: calc(-1 * var(--glass-engine-overscan-y))
-    calc(-1 * var(--glass-engine-overscan-x));
+  inset: calc(-1 * var(--glass-nav-overscan-y))
+    calc(-1 * var(--glass-nav-overscan-x));
   overflow: visible;
   opacity: 0;
   pointer-events: none;
+}
+.glass-bottom-nav__surface.uses-wallpaper .glass-bottom-nav__engine {
   -webkit-mask-image: var(--glass-engine-mask);
   -webkit-mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat;
@@ -416,9 +451,13 @@ onBeforeUnmount(() => {
 .is-fallback .glass-bottom-nav__tab.is-active { color: #0088ff; }
 
 :global(.dark .glass-bottom-nav__surface::before) {
+  border-color: rgb(255 255 255 / 7%);
+  background: rgb(24 24 27 / 8%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+:global(.dark .glass-bottom-nav__surface.is-fallback::before) {
   border-color: rgb(255 255 255 / 14%);
   background: rgb(24 24 27 / 18%);
-  box-shadow: 0 12px 30px rgb(0 0 0 / 24%);
 }
 :global(.dark .is-fallback .glass-bottom-nav__controls::before) { background: rgb(255 255 255 / 14%); }
 :global(.dark .is-fallback .glass-bottom-nav__tab) { color: #d4d4d8; }
