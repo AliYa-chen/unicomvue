@@ -1,42 +1,27 @@
 import { nextTick, onScopeDispose, readonly, ref } from "vue";
+import {
+  createScreenshotFilename,
+  getScreenshotPixelRatio,
+  MAX_SCREENSHOT_DIMENSION,
+  MAX_SCREENSHOT_PIXELS,
+} from "@/utils/screenshot";
+import {
+  createDownloadUrl,
+  renderElementToBlob,
+  revokeDownloadUrl,
+  triggerDownload,
+  tryCopyPngBlob,
+  tryCopyText,
+} from "@/services/browserShare";
+import { getErrorMessage } from "@/utils/errors";
 
 const SCREENSHOT_TIMEOUT_MS = 20_000;
-export const MAX_SCREENSHOT_PIXELS = 4_000_000;
-export const MAX_SCREENSHOT_DIMENSION = 4_096;
-const MAX_SCREENSHOT_PIXEL_RATIO = 2;
 
-function getPositiveDimension(...values) {
-  const dimensions = values.filter((value) => Number.isFinite(value) && value > 0);
-  return Math.max(1, Math.ceil(Math.max(0, ...dimensions)));
-}
-
-export function getScreenshotPixelRatio(
-  target,
-  requestedPixelRatio = globalThis.devicePixelRatio || 1,
-) {
-  const bounds = target?.getBoundingClientRect?.();
-  const width = getPositiveDimension(
-    target?.clientWidth,
-    target?.scrollWidth,
-    bounds?.width,
-  );
-  const height = getPositiveDimension(
-    target?.clientHeight,
-    target?.scrollHeight,
-    bounds?.height,
-  );
-  const deviceScale = Number.isFinite(requestedPixelRatio) && requestedPixelRatio > 0
-    ? requestedPixelRatio
-    : 1;
-
-  return Math.min(
-    deviceScale,
-    MAX_SCREENSHOT_PIXEL_RATIO,
-    Math.sqrt(MAX_SCREENSHOT_PIXELS / (width * height)),
-    MAX_SCREENSHOT_DIMENSION / width,
-    MAX_SCREENSHOT_DIMENSION / height,
-  );
-}
+export {
+  getScreenshotPixelRatio,
+  MAX_SCREENSHOT_DIMENSION,
+  MAX_SCREENSHOT_PIXELS,
+};
 
 export function useScreenshotShare({
   captureTarget,
@@ -63,7 +48,7 @@ export function useScreenshotShare({
     if (downloadCleanupTimer !== null) clearTimeout(downloadCleanupTimer);
     downloadCleanupTimer = null;
 
-    if (downloadUrl.value) URL.revokeObjectURL(downloadUrl.value);
+    revokeDownloadUrl(downloadUrl.value);
     downloadUrl.value = "";
     downloadFilename.value = "";
   }
@@ -110,13 +95,12 @@ export function useScreenshotShare({
     const target = captureTarget.value;
     if (disposed || !target) return null;
 
-    const renderToBlob = captureToBlob || (await import("html-to-image")).toBlob;
-    return renderToBlob(target, {
+    return renderElementToBlob(target, {
       backgroundColor: isDark.value ? "#18181b" : "#fafafa",
       cacheBust: true,
       pixelRatio: getScreenshotPixelRatio(target),
       filter: (node) => node !== excludedTarget?.value,
-    });
+    }, captureToBlob);
   }
 
   function startCapture() {
@@ -137,12 +121,12 @@ export function useScreenshotShare({
 
   async function downloadScreenshot(blob) {
     releaseDownloadUrl();
-    downloadUrl.value = URL.createObjectURL(blob);
-    downloadFilename.value = `联通套餐-${new Date().toISOString().slice(0, 10)}.png`;
+    downloadUrl.value = createDownloadUrl(blob);
+    downloadFilename.value = createScreenshotFilename();
     await nextTick();
 
     if (disposed) return;
-    downloadLink.value?.click();
+    triggerDownload(downloadLink.value);
     downloadCleanupTimer = setTimeout(releaseDownloadUrl, 1000);
   }
 
@@ -163,22 +147,17 @@ export function useScreenshotShare({
       if (!blob) throw new Error("截图生成失败");
       watermarkVisible.value = false;
 
-      if (globalThis.navigator?.clipboard?.write && globalThis.ClipboardItem) {
-        try {
-          await globalThis.navigator.clipboard.write([
-            new globalThis.ClipboardItem({ "image/png": blob }),
-          ]);
+      if (await tryCopyPngBlob(blob)) {
+        if (!disposed) {
           notify("截图已复制到剪贴板");
-          return;
-        } catch {
-          // Image clipboard support varies; downloading is the reliable fallback.
         }
+        return;
       }
 
       await downloadScreenshot(blob);
       if (!disposed) notify("图片剪贴板不可用，截图已下载", "download");
     } catch (error) {
-      if (!disposed) notify(error?.message || "截图生成失败", "error");
+      if (!disposed) notify(getErrorMessage(error, "截图生成失败"), "error");
     } finally {
       watermarkVisible.value = false;
       isSharing.value = false;
@@ -191,22 +170,17 @@ export function useScreenshotShare({
       return false;
     }
 
-    const writeText = globalThis.navigator?.clipboard?.writeText;
-    if (typeof writeText !== "function") {
-      notify(`浏览器未允许复制 ${label}`, "error");
+    if (!(await tryCopyText(value))) {
+      if (!disposed) {
+        notify(`浏览器未允许复制 ${label}`, "error");
+      }
       return false;
     }
 
-    try {
-      await writeText.call(globalThis.navigator.clipboard, value);
-      if (disposed) return false;
-      updateStatus(`${label} 复制成功`, "ok");
-      notify(`${label} 已复制`);
-      return true;
-    } catch {
-      if (!disposed) notify(`浏览器未允许复制 ${label}`, "error");
-      return false;
-    }
+    if (disposed) return false;
+    updateStatus(`${label} 复制成功`, "ok");
+    notify(`${label} 已复制`);
+    return true;
   }
 
   onScopeDispose(() => {

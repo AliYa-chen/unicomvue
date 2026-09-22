@@ -8,209 +8,29 @@ import {
 import {
   NETWORK_INFO_REFRESH_MS,
   NETWORK_INFO_RETRY_MS,
-  NETWORK_INFO_URL,
-  NETWORK_INTERNATIONAL_TRACE_URL,
   NETWORK_LATENCY_INITIAL_SAMPLES,
   NETWORK_LATENCY_INTERVAL_MS,
-  NETWORK_LATENCY_URL,
-  NETWORK_REQUEST_TIMEOUT_MS,
   NETWORK_ROUTE_INTERVAL_MS,
 } from "@/config/networkStatus";
+import {
+  EMPTY_NETWORK_PROFILE,
+  hasNetworkProfileDetails,
+  medianMeasurement,
+  networkRegionName,
+  networkTraceFingerprint,
+  normalizeNetworkProfile,
+  resolveConnectionLabel,
+  routeKindFromCountryCode,
+} from "@/domain/networkStatus";
+import {
+  fetchInternationalTrace,
+  fetchNetworkInfo,
+  measureNetworkLatency,
+} from "@/services/networkStatus";
+import { getErrorMessage } from "@/utils/errors";
 
-const CONNECTION_LABELS = Object.freeze({
-  bluetooth: "蓝牙网络",
-  cellular: "移动网络",
-  ethernet: "有线网络",
-  wifi: "Wi-Fi",
-  wimax: "WiMAX",
-});
-const EMPTY_PROFILE = Object.freeze({
-  publicIp: "",
-  locationLabel: "",
-  carrierLabel: "",
-  networkTypeLabel: "",
-  routeKind: "unknown",
-  routeLabel: "",
-});
-
-function cleanText(value, maximumLength = 48) {
-  return typeof value === "string" ? value.trim().slice(0, maximumLength) : "";
-}
-
-function normalizePublicIp(value) {
-  const address = cleanText(value, 64);
-  return /^[0-9a-f:.]+$/i.test(address) ? address : "";
-}
-
-function uniqueText(values) {
-  return [...new Set(values.map((value) => cleanText(value)).filter(Boolean))];
-}
-
-function connectionLabel(apiType = "") {
-  const explicitType = cleanText(apiType, 24);
-  if (explicitType) return explicitType;
-
-  const type = cleanText(globalThis.navigator?.connection?.type, 20).toLowerCase();
-  return CONNECTION_LABELS[type] || "";
-}
-
-function unwrapPayload(payload) {
-  return payload?.status === 0 && payload?.data ? payload.data : payload;
-}
-
-function regionName(countryCode) {
-  if (!countryCode || typeof Intl.DisplayNames !== "function") return "";
-  try {
-    return cleanText(new Intl.DisplayNames(["zh-CN"], { type: "region" }).of(countryCode), 32);
-  } catch {
-    return "";
-  }
-}
-
-function normalizeProfile(payload, countryCodeHint = "") {
-  const data = unwrapPayload(payload);
-  const hintedCode = cleanText(countryCodeHint, 8).toUpperCase();
-  const actualCountry = data?.country?.code ? data.country : null;
-  const registeredCountry = data?.registered_country;
-  const countryCode = cleanText(
-    actualCountry?.code || hintedCode || registeredCountry?.code,
-    8,
-  ).toUpperCase();
-  const international = Boolean(countryCode && countryCode !== "CN");
-  const shortRegions = Array.isArray(data?.regions_short)
-    ? data.regions_short
-    : Array.isArray(data?.geo_cn?.division?.short)
-      ? data.geo_cn.division.short
-      : [];
-  const fullRegions = Array.isArray(data?.regions) ? data.regions : [];
-  const fallbackRegions = [data?.subdivision, data?.city, data?.area];
-  const regions = uniqueText(
-    shortRegions.length ? shortRegions : fullRegions.length ? fullRegions : fallbackRegions,
-  ).slice(0, 3);
-  const countryName = cleanText(
-    actualCountry?.name
-    || (hintedCode ? regionName(hintedCode) : "")
-    || registeredCountry?.name,
-    32,
-  );
-  const locationParts = international
-    ? uniqueText([countryName, ...regions])
-    : regions;
-  const carrier = cleanText(
-    data?.geo_cn?.isp
-    || data?.as?.info
-    || data?.as?.name,
-  );
-
-  return {
-    publicIp: normalizePublicIp(data?.ip),
-    locationLabel: locationParts.join(" "),
-    carrierLabel: carrier,
-    networkTypeLabel: connectionLabel(data?.type),
-    routeKind: countryCode === "CN" ? "domestic" : international ? "international" : "unknown",
-    routeLabel: international ? "国际线路" : "",
-  };
-}
-
-function hasProfileDetails(profile) {
-  return Boolean(
-    profile?.locationLabel
-    || profile?.carrierLabel
-    || profile?.networkTypeLabel
-  );
-}
-
-function parseTrace(body) {
-  const fields = {};
-  for (const line of String(body || "").split("\n")) {
-    const separator = line.indexOf("=");
-    if (separator <= 0) continue;
-    fields[line.slice(0, separator)] = line.slice(separator + 1).trim();
-  }
-  return {
-    ip: cleanText(fields.ip, 64),
-    countryCode: cleanText(fields.loc, 8).toUpperCase(),
-  };
-}
-
-function median(values) {
-  const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);
-  if (!sorted.length) return null;
-  return Math.round(sorted[Math.floor(sorted.length / 2)]);
-}
-
-async function fetchWithTimeout(url, options, parentSignal) {
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  if (parentSignal?.aborted) controller.abort();
-  else parentSignal?.addEventListener("abort", abort, { once: true });
-  const timeout = setTimeout(abort, NETWORK_REQUEST_TIMEOUT_MS);
-
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-    parentSignal?.removeEventListener("abort", abort);
-  }
-}
-
-async function fetchNetworkInfo(signal, ip = "") {
-  const url = new URL(NETWORK_INFO_URL);
-  if (ip) url.searchParams.set("ip", ip);
-  const response = await fetchWithTimeout(url.href, {
-    cache: "no-store",
-    credentials: "omit",
-    mode: "cors",
-    referrerPolicy: "no-referrer",
-  }, signal);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = await response.json();
-  if (payload?.status !== undefined && payload.status !== 0) {
-    throw new Error("网络信息接口返回异常");
-  }
-  return payload;
-}
-
-async function fetchInternationalTrace(signal) {
-  const url = new URL(NETWORK_INTERNATIONAL_TRACE_URL);
-  url.searchParams.set("_", `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-  const startedAt = performance.now();
-  const response = await fetchWithTimeout(url.href, {
-    cache: "no-store",
-    credentials: "omit",
-    mode: "cors",
-    referrerPolicy: "no-referrer",
-  }, signal);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return {
-    ...parseTrace(await response.text()),
-    latencyMs: Math.max(1, Math.round(performance.now() - startedAt)),
-  };
-}
-
-async function measureLatency(signal) {
-  const url = new URL(NETWORK_LATENCY_URL);
-  url.searchParams.set("_", `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-  const startedAt = performance.now();
-  await fetchWithTimeout(url.href, {
-    method: "HEAD",
-    cache: "no-store",
-    credentials: "omit",
-    mode: "no-cors",
-    referrerPolicy: "no-referrer",
-  }, signal);
-  return Math.max(1, Math.round(performance.now() - startedAt));
-}
-
-function routeKindFromCountryCode(countryCode) {
-  const normalized = cleanText(countryCode, 8).toUpperCase();
-  if (!normalized) return "unknown";
-  return normalized === "CN" ? "domestic" : "international";
-}
-
-function traceFingerprint(trace) {
-  if (!trace?.ip && !trace?.countryCode) return "";
-  return `${trace.ip || ""}|${trace.countryCode || ""}`;
+function currentConnectionLabel(apiType = "") {
+  return resolveConnectionLabel(apiType, globalThis.navigator?.connection?.type);
 }
 
 function nextPollDelay(startedAt, intervalMs) {
@@ -218,7 +38,10 @@ function nextPollDelay(startedAt, intervalMs) {
 }
 
 export function useNetworkStatus() {
-  const profile = ref({ ...EMPTY_PROFILE, networkTypeLabel: connectionLabel() });
+  const profile = ref({
+    ...EMPTY_NETWORK_PROFILE,
+    networkTypeLabel: currentConnectionLabel(),
+  });
   const latencyMs = ref(null);
   const profileLoading = ref(false);
   const latencyLoading = ref(false);
@@ -238,7 +61,7 @@ export function useNetworkStatus() {
   let runGeneration = 0;
   let disposed = false;
 
-  const hasProfile = computed(() => hasProfileDetails(profile.value));
+  const hasProfile = computed(() => hasNetworkProfileDetails(profile.value));
   const loading = computed(() => (
     !offline.value
     && (
@@ -337,7 +160,7 @@ export function useNetworkStatus() {
   function recordLatency(sample) {
     if (!Number.isFinite(sample)) return;
     latencySamples = [...latencySamples, sample].slice(-NETWORK_LATENCY_INITIAL_SAMPLES);
-    latencyMs.value = median(latencySamples);
+    latencyMs.value = medianMeasurement(latencySamples);
     latencyError.value = "";
     latencyLoading.value = false;
   }
@@ -349,7 +172,7 @@ export function useNetworkStatus() {
   ) {
     if (!shouldRun() || generation !== runGeneration) return;
     if (!force && profileUpdatedAt && Date.now() - profileUpdatedAt < NETWORK_INFO_REFRESH_MS) {
-      const detectedType = connectionLabel();
+      const detectedType = currentConnectionLabel();
       if (detectedType) profile.value = { ...profile.value, networkTypeLabel: detectedType };
       return;
     }
@@ -362,14 +185,18 @@ export function useNetworkStatus() {
     profileLoading.value = true;
     profileError.value = "";
     const trace = traceOverride;
-    const requestedTraceFingerprint = traceFingerprint(trace);
+    const requestedTraceFingerprint = networkTraceFingerprint(trace);
 
     try {
       const payload = await fetchNetworkInfo(controller.signal, trace?.ip || "");
       if (generation !== runGeneration || controller.signal.aborted) return;
-      if (requestedTraceFingerprint !== traceFingerprint(currentTrace)) return;
+      if (requestedTraceFingerprint !== networkTraceFingerprint(currentTrace)) return;
 
-      const normalizedProfile = normalizeProfile(payload, trace?.countryCode);
+      const normalizedProfile = normalizeNetworkProfile(
+        payload,
+        trace?.countryCode,
+        globalThis.navigator?.connection?.type,
+      );
       const tracedRouteKind = routeKindFromCountryCode(trace?.countryCode);
       const nextProfile = tracedRouteKind === "unknown"
         ? normalizedProfile
@@ -378,11 +205,11 @@ export function useNetworkStatus() {
             routeKind: tracedRouteKind,
             routeLabel: tracedRouteKind === "international" ? "国际线路" : "",
           };
-      if (!hasProfileDetails(nextProfile)) throw new Error("网络信息查询失败");
+      if (!hasNetworkProfileDetails(nextProfile)) throw new Error("网络信息查询失败");
       commitProfile(nextProfile, generation);
     } catch (error) {
       if (!controller.signal.aborted && generation === runGeneration) {
-        profileError.value = error?.message || "网络信息查询失败";
+        profileError.value = getErrorMessage(error, "网络信息查询失败");
       }
     } finally {
       if (profileController === controller) {
@@ -404,8 +231,8 @@ export function useNetworkStatus() {
       const trace = await fetchInternationalTrace(controller.signal);
       if (generation !== runGeneration || controller.signal.aborted) return;
 
-      const previousFingerprint = traceFingerprint(currentTrace);
-      const nextFingerprint = traceFingerprint(trace);
+      const previousFingerprint = networkTraceFingerprint(currentTrace);
+      const nextFingerprint = networkTraceFingerprint(trace);
       currentTrace = trace;
       const traceChanged = Boolean(
         nextFingerprint
@@ -423,7 +250,7 @@ export function useNetworkStatus() {
         commitProfile({
           ...profile.value,
           locationLabel: detectedRouteKind === "international"
-            ? regionName(trace.countryCode)
+            ? networkRegionName(trace.countryCode)
             : "",
           carrierLabel: "",
           routeKind: detectedRouteKind,
@@ -463,16 +290,16 @@ export function useNetworkStatus() {
     try {
       // The first request establishes DNS/TLS and is intentionally not shown.
       if (latencyMs.value === null) {
-        await measureLatency(controller.signal);
+        await measureNetworkLatency(controller.signal);
       }
-      const sample = await measureLatency(controller.signal);
+      const sample = await measureNetworkLatency(controller.signal);
       if (generation !== runGeneration || controller.signal.aborted) return;
       recordLatency(sample);
     } catch (error) {
       if (!controller.signal.aborted && generation === runGeneration) {
         latencySamples = [];
         latencyMs.value = null;
-        latencyError.value = error?.message || "网络延迟测量失败";
+        latencyError.value = getErrorMessage(error, "网络延迟测量失败");
       }
     } finally {
       if (latencyController === controller) latencyController = null;
@@ -500,7 +327,10 @@ export function useNetworkStatus() {
     const generation = runGeneration;
     offline.value = false;
     if (resetProfile) {
-      profile.value = { ...EMPTY_PROFILE, networkTypeLabel: connectionLabel() };
+      profile.value = {
+        ...EMPTY_NETWORK_PROFILE,
+        networkTypeLabel: currentConnectionLabel(),
+      };
       profileUpdatedAt = 0;
       profileError.value = "";
       currentTrace = null;

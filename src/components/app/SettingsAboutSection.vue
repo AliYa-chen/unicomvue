@@ -1,9 +1,8 @@
 <template>
-  <section class="rounded-2xl border border-zinc-200 bg-white/82 p-4 shadow-sm dark:border-white/10 dark:bg-zinc-900/58" aria-labelledby="about-settings-title">
-    <div class="flex items-center justify-between gap-3">
-      <h3 id="about-settings-title" class="text-sm font-semibold">关于</h3>
+  <SettingsSection title="关于">
+    <template #aside>
       <span class="text-[11px] text-zinc-400 dark:text-zinc-500">© {{ year }} BinGo Tools</span>
-    </div>
+    </template>
 
     <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-zinc-500 dark:text-zinc-400">
       <span class="inline-flex items-center gap-1.5">
@@ -36,11 +35,12 @@
         隐私 / 说明
       </button>
     </div>
-  </section>
+  </SettingsSection>
 </template>
 
 <script setup>
 import { GitBranch } from "@lucide/vue";
+import SettingsSection from "@/components/app/SettingsSection.vue";
 import { APP_BRANCH, APP_COMMIT } from "@/env";
 
 defineProps({

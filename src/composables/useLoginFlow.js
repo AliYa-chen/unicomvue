@@ -3,33 +3,25 @@ import {
   CAPTCHA_APP_ID,
   CAPTCHA_SCRIPT_SRC,
   SMS_COUNTDOWN_SECONDS,
-  UNICOM_STORAGE_KEYS,
 } from "@/config/unicom";
 import { isValidPhone, isValidToken } from "@/domain/accounts";
+import {
+  smsLoginCredentials,
+  tokenLoginCredentials,
+} from "@/domain/loginCredentials";
 import {
   loginWithSms,
   sendLoginCode,
   validateCaptcha,
 } from "@/services/unicomApi";
 import { ensureLoginIdentity } from "@/services/loginIdentity";
-import { getStorageItem, setStorageItem } from "@/services/storage";
-import { createAbortError } from "@/utils/errors";
-
-const CAPTCHA_SCRIPT_TIMEOUT_MS = 15_000;
-
-function responseMessage(error, fallback) {
-  return error?.message ? String(error.message) : fallback;
-}
-
-function saveRecentPhone(phone) {
-  if (getStorageItem(UNICOM_STORAGE_KEYS.saveAccountsPreference, "true") !== "false") {
-    setStorageItem(UNICOM_STORAGE_KEYS.phoneHistory, phone);
-  }
-}
+import { getRecentPhone, saveRecentPhone } from "@/services/loginPreferences";
+import { createCaptchaScriptLoader } from "@/services/captchaScript";
+import { createAbortError, getErrorMessage } from "@/utils/errors";
 
 export function useLoginFlow(
   open,
-  { captchaScriptTimeoutMs = CAPTCHA_SCRIPT_TIMEOUT_MS } = {},
+  { captchaScriptTimeoutMs } = {},
 ) {
   const mode = ref("sms");
   const phone = ref("");
@@ -41,6 +33,10 @@ export function useLoginFlow(
   const loginLoading = ref(false);
   const smsCountdown = ref(0);
   const captchaScriptRequested = ref(false);
+  const captchaScript = createCaptchaScriptLoader({
+    timeoutMs: captchaScriptTimeoutMs,
+    onRequestedChange: (requested) => { captchaScriptRequested.value = requested; },
+  });
 
   let disposed = false;
   let generation = 0;
@@ -49,10 +45,6 @@ export function useLoginFlow(
   let captchaInstance = null;
   let captchaFlowResolve = null;
   let captchaFlowReject = null;
-  let captchaScriptPromise = null;
-  let resolveCaptchaScript = null;
-  let rejectCaptchaScript = null;
-  let captchaScriptTimer = null;
 
   const phoneIsValid = computed(() => isValidPhone(phone.value));
   const tokenIsValid = computed(() => isValidToken(token.value));
@@ -101,26 +93,12 @@ export function useLoginFlow(
     else resolve?.(resultToken);
   }
 
-  function settleCaptchaScript(error) {
-    const resolve = resolveCaptchaScript;
-    const reject = rejectCaptchaScript;
-    if (captchaScriptTimer !== null) clearTimeout(captchaScriptTimer);
-    captchaScriptTimer = null;
-    resolveCaptchaScript = null;
-    rejectCaptchaScript = null;
-    captchaScriptPromise = null;
-    captchaScriptRequested.value = false;
-
-    if (error) reject?.(error);
-    else resolve?.();
-  }
-
   function cancelPendingWork() {
     generation += 1;
     activeController?.abort();
     activeController = null;
     settleCaptchaFlow(createAbortError("登录流程已取消"));
-    if (captchaScriptPromise) settleCaptchaScript(createAbortError("登录流程已取消"));
+    captchaScript.cancel();
     smsLoading.value = false;
     loginLoading.value = false;
   }
@@ -153,37 +131,8 @@ export function useLoginFlow(
     return isCurrent(context) && snapshot.phone === String(phone.value || "").trim();
   }
 
-  function loadCaptchaScript() {
-    if (typeof globalThis.TencentCaptcha === "function") return Promise.resolve();
-    if (captchaScriptPromise) return captchaScriptPromise;
-
-    captchaScriptRequested.value = true;
-    captchaScriptPromise = new Promise((resolve, reject) => {
-      resolveCaptchaScript = resolve;
-      rejectCaptchaScript = reject;
-    });
-    const timeout = Number.isFinite(captchaScriptTimeoutMs) && captchaScriptTimeoutMs > 0
-      ? captchaScriptTimeoutMs
-      : CAPTCHA_SCRIPT_TIMEOUT_MS;
-    captchaScriptTimer = setTimeout(() => {
-      settleCaptchaScript(new Error("验证码组件加载超时，请重试"));
-    }, timeout);
-    return captchaScriptPromise;
-  }
-
-  function onCaptchaScriptLoad() {
-    if (!captchaScriptPromise) return;
-    if (typeof globalThis.TencentCaptcha === "function") settleCaptchaScript();
-    else settleCaptchaScript(new Error("验证码组件加载失败"));
-  }
-
-  function onCaptchaScriptError() {
-    if (!captchaScriptPromise) return;
-    settleCaptchaScript(new Error("验证码组件加载失败"));
-  }
-
   async function runCaptcha(mobile, initialSnapshot, context) {
-    await loadCaptchaScript();
+    await captchaScript.load();
     if (!snapshotIsCurrent(initialSnapshot, context)) {
       throw createAbortError("登录流程已取消");
     }
@@ -296,7 +245,7 @@ export function useLoginFlow(
       return false;
     } catch (error) {
       if (error?.name !== "AbortError" && isCurrent(context)) {
-        setMessage(`请求发送出错: ${responseMessage(error, "发送失败")}`);
+        setMessage(`请求发送出错: ${getErrorMessage(error, "发送失败")}`);
       }
       return false;
     } finally {
@@ -331,20 +280,10 @@ export function useLoginFlow(
       }, context.controller.signal);
 
       if (!snapshotIsCurrent(snapshot, context)) return null;
-      if (result?.status !== "success") throw new Error(result?.msg || "登录失败");
-      if (!isValidToken(result?.ecs_token)) {
-        throw new Error("后端返回的数据中缺少有效的 ecs_token");
-      }
-
-      return {
-        token: String(result.ecs_token).trim(),
-        onlinToken: String(result.onlin_token || "").trim(),
-        phone: snapshot.phone,
-        loginType: "sms",
-      };
+      return smsLoginCredentials(result, snapshot.phone);
     } catch (error) {
       if (error?.name !== "AbortError" && isCurrent(context)) {
-        setMessage(responseMessage(error, "登录失败"));
+        setMessage(getErrorMessage(error, "登录失败"));
       }
       return null;
     } finally {
@@ -356,18 +295,13 @@ export function useLoginFlow(
   }
 
   function submitTokenLogin() {
-    const normalizedToken = String(token.value || "").trim();
-    if (!isValidToken(normalizedToken)) {
+    const credentials = tokenLoginCredentials(token.value);
+    if (!credentials) {
       setMessage("请输入有效的 ecs_token");
       return null;
     }
 
-    return {
-      token: normalizedToken,
-      onlinToken: "",
-      phone: "",
-      loginType: "token",
-    };
+    return credentials;
   }
 
   function setMode(nextMode) {
@@ -383,9 +317,7 @@ export function useLoginFlow(
     cancelPendingWork();
     stopSmsCountdown();
     mode.value = "sms";
-    phone.value = getStorageItem(UNICOM_STORAGE_KEYS.saveAccountsPreference, "true") === "false"
-      ? ""
-      : getStorageItem(UNICOM_STORAGE_KEYS.phoneHistory, "");
+    phone.value = getRecentPhone();
     code.value = "";
     token.value = "";
     setMessage("");
@@ -426,7 +358,7 @@ export function useLoginFlow(
     sendCode,
     submitSmsLogin,
     submitTokenLogin,
-    onCaptchaScriptLoad,
-    onCaptchaScriptError,
+    onCaptchaScriptLoad: captchaScript.onLoad,
+    onCaptchaScriptError: captchaScript.onError,
   };
 }

@@ -1,10 +1,11 @@
-const UNICOM_API_BASE_URL = "https://networkapi.2t.hk";
+export const UNICOM_API_BASE_URL = "https://networkapi.2t.hk";
 
 export const UNICOM_API_ENDPOINTS = Object.freeze({
   login: `${UNICOM_API_BASE_URL}/gettoken/`,
   packageUsage: `${UNICOM_API_BASE_URL}/ocs_proxy/`,
   basicData: `${UNICOM_API_BASE_URL}/basicdata_proxy/`,
   qci: `${UNICOM_API_BASE_URL}/qci_proxy/`,
+  speedTestNodes: `${UNICOM_API_BASE_URL}/speedtest/`,
 });
 
 export const UNICOM_STORAGE_KEYS = Object.freeze({

@@ -39,16 +39,12 @@
         </header>
 
         <div class="min-h-0 overflow-y-auto overscroll-contain px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-5">
-          <section class="speed-settings-card" aria-labelledby="speed-node-title">
-            <div class="flex items-start gap-3">
-              <span class="speed-settings-icon" aria-hidden="true"><Server :size="18" /></span>
-              <div class="min-w-0 flex-1">
-                <h3 id="speed-node-title" class="text-sm font-semibold">测速节点</h3>
-                <p class="mt-1 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-                  运行中切换节点会立即重新测速。
-                </p>
-              </div>
-            </div>
+          <SpeedSettingsCard
+            heading-id="speed-node-title"
+            title="测速节点"
+            description="运行中切换节点会立即重新测速。"
+          >
+            <template #icon><Server :size="18" /></template>
 
             <div class="relative mt-4">
               <select
@@ -83,41 +79,40 @@
               <summary class="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400">查看当前文件地址</summary>
               <p class="mt-2 break-all font-mono text-[10px] leading-relaxed text-zinc-400 dark:text-zinc-500">{{ selectedUrl }}</p>
             </details>
-          </section>
+          </SpeedSettingsCard>
 
-          <section class="speed-settings-card mt-4" aria-labelledby="speed-threads-title">
-            <div class="flex items-start gap-3">
-              <span class="speed-settings-icon" aria-hidden="true"><Cpu :size="18" /></span>
-              <div class="min-w-0 flex-1">
-                <h3 id="speed-threads-title" class="text-sm font-semibold">并发线程</h3>
-                <p class="mt-1 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-                  拖动时实时调整下载任务。
-                </p>
-              </div>
+          <SpeedSettingsCard
+            class="mt-4"
+            heading-id="speed-threads-title"
+            title="并发线程"
+            description="拖动时实时调整下载任务。"
+          >
+            <template #icon><Cpu :size="18" /></template>
+            <template #aside>
               <label class="relative shrink-0">
                 <span class="sr-only">测速线程数</span>
                 <input
                   class="h-10 w-20 rounded-xl border border-zinc-200 bg-white pr-7 pl-2 text-center text-base font-semibold tabular-nums outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950"
                   type="number"
-                  min="1"
-                  max="64"
+                  :min="SPEED_TEST_MIN_THREADS"
+                  :max="SPEED_TEST_MAX_THREADS"
                   :value="threadCount"
                   @change="changeThreadCount"
                 />
                 <span class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-zinc-400">条</span>
               </label>
-            </div>
+            </template>
 
             <LiquidGlassThreadSlider
               class="mt-3"
               :model-value="threadCount"
-              :min="1"
-              :max="64"
+              :min="SPEED_TEST_MIN_THREADS"
+              :max="SPEED_TEST_MAX_THREADS"
               @update:model-value="updateThreadCount"
             />
             <div class="flex items-center justify-between px-2 text-[11px] text-zinc-400 dark:text-zinc-500">
-              <span>低并发 · 1</span>
-              <span>高并发 · 64</span>
+              <span>低并发 · {{ SPEED_TEST_MIN_THREADS }}</span>
+              <span>高并发 · {{ SPEED_TEST_MAX_THREADS }}</span>
             </div>
             <div class="mt-3 flex flex-wrap gap-2" aria-label="常用线程数">
               <button
@@ -137,18 +132,15 @@
             <p class="mt-3 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
               实际同时传输数受浏览器与节点协议限制；HTTP/1.1 单域名通常约为 6 条，其余任务会在浏览器中等待连接。
             </p>
-          </section>
+          </SpeedSettingsCard>
 
-          <section class="speed-settings-card mt-4" aria-labelledby="custom-node-title">
-            <div class="flex items-start gap-3">
-              <span class="speed-settings-icon" aria-hidden="true"><Link2 :size="18" /></span>
-              <div class="min-w-0 flex-1">
-                <h3 id="custom-node-title" class="text-sm font-semibold">自定义节点</h3>
-                <p class="mt-1 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-                  使用支持跨域访问的 HTTP 或 HTTPS 文件地址。
-                </p>
-              </div>
-            </div>
+          <SpeedSettingsCard
+            class="mt-4"
+            heading-id="custom-node-title"
+            title="自定义节点"
+            description="使用支持跨域访问的 HTTP 或 HTTPS 文件地址。"
+          >
+            <template #icon><Link2 :size="18" /></template>
 
             <ul v-if="customNodes.length" class="mt-4 space-y-2" aria-label="已保存的自定义测速节点">
               <li v-for="node in customNodes" :key="node.id" class="flex min-w-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white/70 p-2 dark:border-zinc-700 dark:bg-zinc-950/45">
@@ -213,7 +205,7 @@
                 </button>
               </form>
             </details>
-          </section>
+          </SpeedSettingsCard>
 
           <div class="mt-4 rounded-xl bg-amber-50 px-3 py-2.5 text-[11px] leading-relaxed text-amber-800 dark:bg-amber-400/10 dark:text-amber-200">
             持续测速会反复下载所选文件并消耗大量流量，只有手动点击“停止测速”才会结束。请勿用于未经授权的地址。
@@ -238,8 +230,13 @@ import {
   X,
 } from "@lucide/vue";
 import LiquidGlassThreadSlider from "@/components/speed/LiquidGlassThreadSlider.vue";
+import SpeedSettingsCard from "@/components/speed/SpeedSettingsCard.vue";
 import { useDocumentScrollLock } from "@/composables/useDocumentScrollLock";
 import { useTheme } from "@/composables/useTheme";
+import {
+  SPEED_TEST_MAX_THREADS,
+  SPEED_TEST_MIN_THREADS,
+} from "@/config/speedTest";
 
 const THREAD_PRESETS = Object.freeze([4, 8, 16, 32]);
 const FOCUSABLE_SELECTOR = [
@@ -337,34 +334,3 @@ watch(open, async (isOpen) => {
   if (props.active && focusTarget?.isConnected) focusTarget.focus({ preventScroll: true });
 }, { flush: "post" });
 </script>
-
-<style scoped>
-.speed-settings-card {
-  border: 1px solid color-mix(in srgb, var(--color-zinc-300) 78%, transparent);
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--color-zinc-50) 76%, transparent);
-  padding: 1rem;
-}
-
-.speed-settings-icon {
-  display: inline-grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  flex: none;
-  place-items: center;
-  border-radius: 0.75rem;
-  background: var(--app-accent-soft);
-  color: var(--app-accent-700);
-}
-
-.is-dark .speed-settings-card {
-  border-color: rgb(255 255 255 / 10%);
-  background: rgb(24 24 27 / 58%);
-}
-
-.is-dark .speed-settings-icon {
-  background: color-mix(in srgb, var(--app-accent-950) 74%, transparent);
-  color: var(--app-accent-300);
-}
-
-</style>

@@ -7,10 +7,15 @@ import {
   readonly,
   ref,
 } from "vue";
+import {
+  APPEARANCE_STORAGE_KEYS,
+  DEFAULT_THEME_MODE,
+  THEME_MODES,
+  THEME_MODE_VALUES,
+} from "@/config/appearance";
 import { getStorageItem, setStorageItem } from "@/services/storage";
 
-const THEME_STORAGE_KEY = "theme";
-const VALID_THEME_MODES = new Set(["light", "dark", "system"]);
+const VALID_THEME_MODES = new Set(THEME_MODE_VALUES);
 
 const themeInjectionKey = Symbol("theme");
 
@@ -24,14 +29,14 @@ function getColorSchemeQuery() {
 }
 
 function createThemeController() {
-  const savedMode = getStorageItem(THEME_STORAGE_KEY);
-  const themeMode = ref(VALID_THEME_MODES.has(savedMode) ? savedMode : "system");
+  const savedMode = getStorageItem(APPEARANCE_STORAGE_KEYS.theme);
+  const themeMode = ref(VALID_THEME_MODES.has(savedMode) ? savedMode : DEFAULT_THEME_MODE);
   const mediaQueryList = getColorSchemeQuery();
   const systemDark = ref(Boolean(mediaQueryList?.matches));
 
   const isDark = computed(() => (
-    themeMode.value === "dark"
-    || (themeMode.value === "system" && systemDark.value)
+    themeMode.value === THEME_MODES.dark
+    || (themeMode.value === THEME_MODES.system && systemDark.value)
   ));
 
   function syncSystemTheme(event) {
@@ -41,7 +46,7 @@ function createThemeController() {
   function setTheme(mode) {
     if (!VALID_THEME_MODES.has(mode)) return;
     themeMode.value = mode;
-    setStorageItem(THEME_STORAGE_KEY, mode);
+    setStorageItem(APPEARANCE_STORAGE_KEYS.theme, mode);
   }
 
   onMounted(() => {

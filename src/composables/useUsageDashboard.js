@@ -12,6 +12,7 @@ import {
   fetchQciData,
   fetchUsage,
 } from "@/services/unicomApi";
+import { getErrorMessage } from "@/utils/errors";
 import { useUsagePreferences } from "@/composables/useUsagePreferences";
 
 function getAccountFailure(data, status = 0) {
@@ -239,7 +240,7 @@ export function useUsageDashboard(
       if (!assertCurrentRequest(generation, token, controller.signal)) return;
       const failure = getAccountFailure(error?.data, error?.status);
       if (failure) refreshNextAccount = removeInvalidAccount(failure);
-      else if (!disposed) setStatus(error?.message || "查询失败", "error");
+      else if (!disposed) setStatus(getErrorMessage(error, "查询失败"), "error");
     } finally {
       if (generation === requestGeneration) {
         activeController = null;

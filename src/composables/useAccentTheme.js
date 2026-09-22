@@ -4,11 +4,14 @@ import {
   DEFAULT_ACCENT_THEME,
   getAccentTheme,
 } from "@/config/accentThemes";
+import { APPEARANCE_STORAGE_KEYS } from "@/config/appearance";
 import { getStorageItem, setStorageItem } from "@/services/storage";
 
-const ACCENT_STORAGE_KEY = "unicom.appearance.accent";
 const TAILWIND_ACCENT_NAME = "indigo";
-const savedAccentId = getStorageItem(ACCENT_STORAGE_KEY, DEFAULT_ACCENT_THEME);
+const savedAccentId = getStorageItem(
+  APPEARANCE_STORAGE_KEYS.accent,
+  DEFAULT_ACCENT_THEME,
+);
 const accentId = ref(getAccentTheme(savedAccentId).id);
 const activeAccent = computed(() => getAccentTheme(accentId.value));
 
@@ -46,7 +49,7 @@ export function useAccentTheme() {
 
     accentId.value = theme.id;
     applyAccentVariables(theme);
-    setStorageItem(ACCENT_STORAGE_KEY, theme.id);
+    setStorageItem(APPEARANCE_STORAGE_KEYS.accent, theme.id);
     return true;
   }
 

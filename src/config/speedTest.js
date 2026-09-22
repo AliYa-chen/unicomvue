@@ -22,11 +22,13 @@ export const SPEED_TEST_NODE_GROUPS = Object.freeze([
   }),
 ]);
 
-export const SPEED_TEST_NODES_API_URL = "https://networkapi.2t.hk/speedtest/";
 export const SPEED_TEST_DEFAULT_URL = SPEED_TEST_NODE_GROUPS[0].options[0].value;
 export const SPEED_TEST_DEFAULT_THREADS = 8;
 export const SPEED_TEST_MIN_THREADS = 1;
 export const SPEED_TEST_MAX_THREADS = 64;
+export const SPEED_TEST_MAX_CUSTOM_NODES = 20;
+export const SPEED_TEST_NODE_REQUEST_TIMEOUT_MS = 8_000;
+export const SPEED_TEST_NODE_MAX_RESPONSE_BYTES = 256 * 1024;
 export const SPEED_TEST_LIVE_INTERVAL_MS = 100;
 export const SPEED_TEST_SPEED_WINDOW_MS = 800;
 export const SPEED_TEST_SAMPLE_INTERVAL_MS = 500;

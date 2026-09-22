@@ -7,3 +7,7 @@ export function createAbortError(message = "操作已取消") {
     return error;
   }
 }
+
+export function getErrorMessage(error, fallback = "操作失败") {
+  return error?.message ? String(error.message) : fallback;
+}

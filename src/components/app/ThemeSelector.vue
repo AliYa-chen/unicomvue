@@ -4,67 +4,31 @@
     class="flex h-10 items-center rounded-lg border border-zinc-200 bg-zinc-50/80 p-1 dark:border-zinc-700 dark:bg-zinc-900/80"
   >
     <button
+      v-for="option in THEME_OPTIONS"
+      :key="option.value"
       type="button"
       class="inline-flex h-8 w-9 items-center justify-center rounded-md transition"
-      :class="themeMode === 'light' ? 'bg-white text-amber-600 hover:shadow-sm dark:bg-zinc-700 dark:text-amber-400' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
-      title="浅色主题"
-      aria-label="浅色主题"
-      :aria-pressed="themeMode === 'light'"
-      @click="selectTheme('light')"
+      :class="themeButtonClass(option)"
+      :title="option.title"
+      :aria-label="option.title"
+      :aria-pressed="themeMode === option.value"
+      @click="selectTheme(option.value)"
     >
-      <Sun :size="16" />
-    </button>
-    <button
-      type="button"
-      class="inline-flex h-8 w-9 items-center justify-center rounded-md transition"
-      :class="themeMode === 'system' ? 'bg-white text-indigo-600 hover:shadow-sm dark:bg-zinc-700 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
-      title="跟随系统主题"
-      aria-label="跟随系统主题"
-      :aria-pressed="themeMode === 'system'"
-      @click="selectTheme('system')"
-    >
-      <Monitor :size="16" />
-    </button>
-    <button
-      type="button"
-      class="inline-flex h-8 w-9 items-center justify-center rounded-md transition"
-      :class="themeMode === 'dark' ? 'bg-white text-indigo-600 hover:shadow-sm dark:bg-zinc-700 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
-      title="深色主题"
-      aria-label="深色主题"
-      :aria-pressed="themeMode === 'dark'"
-      @click="selectTheme('dark')"
-    >
-      <Moon :size="16" />
+      <component :is="option.component" :size="16" />
     </button>
   </div>
 
   <div v-else class="grid grid-cols-3 gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800">
     <button
+      v-for="option in THEME_OPTIONS"
+      :key="option.value"
       type="button"
       class="flex h-9 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition"
-      :aria-pressed="themeMode === 'light'"
-      :class="themeMode === 'light' ? 'bg-white text-amber-600 hover:shadow-sm dark:bg-zinc-700 dark:text-amber-400' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
-      @click="selectTheme('light')"
+      :aria-pressed="themeMode === option.value"
+      :class="themeButtonClass(option)"
+      @click="selectTheme(option.value)"
     >
-      <Sun :size="15" />浅色
-    </button>
-    <button
-      type="button"
-      class="flex h-9 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition"
-      :aria-pressed="themeMode === 'system'"
-      :class="themeMode === 'system' ? 'bg-white text-indigo-600 hover:shadow-sm dark:bg-zinc-700 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
-      @click="selectTheme('system')"
-    >
-      <Monitor :size="15" />系统
-    </button>
-    <button
-      type="button"
-      class="flex h-9 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition"
-      :aria-pressed="themeMode === 'dark'"
-      :class="themeMode === 'dark' ? 'bg-white text-indigo-600 hover:shadow-sm dark:bg-zinc-700 dark:text-indigo-300' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'"
-      @click="selectTheme('dark')"
-    >
-      <Moon :size="15" />深色
+      <component :is="option.component" :size="15" />{{ option.label }}
     </button>
   </div>
 </template>
@@ -72,6 +36,33 @@
 <script setup>
 import { Monitor, Moon, Sun } from "@lucide/vue";
 import { useTheme } from "@/composables/useTheme";
+import { THEME_MODES } from "@/config/appearance";
+
+const ACTIVE_DEFAULT_CLASS = "bg-white text-indigo-600 hover:shadow-sm dark:bg-zinc-700 dark:text-indigo-300";
+const INACTIVE_CLASS = "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200";
+const THEME_OPTIONS = Object.freeze([
+  Object.freeze({
+    value: THEME_MODES.light,
+    label: "浅色",
+    title: "浅色主题",
+    component: Sun,
+    activeClass: "bg-white text-amber-600 hover:shadow-sm dark:bg-zinc-700 dark:text-amber-400",
+  }),
+  Object.freeze({
+    value: THEME_MODES.system,
+    label: "系统",
+    title: "跟随系统主题",
+    component: Monitor,
+    activeClass: ACTIVE_DEFAULT_CLASS,
+  }),
+  Object.freeze({
+    value: THEME_MODES.dark,
+    label: "深色",
+    title: "深色主题",
+    component: Moon,
+    activeClass: ACTIVE_DEFAULT_CLASS,
+  }),
+]);
 
 defineProps({
   compact: { type: Boolean, default: false },
@@ -79,6 +70,10 @@ defineProps({
 
 const emit = defineEmits(["change"]);
 const { themeMode, setTheme } = useTheme();
+
+function themeButtonClass(option) {
+  return themeMode.value === option.value ? option.activeClass : INACTIVE_CLASS;
+}
 
 function selectTheme(mode) {
   setTheme(mode);

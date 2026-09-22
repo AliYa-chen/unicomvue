@@ -30,6 +30,7 @@ import {
   watch,
 } from "vue";
 import { useTheme } from "@/composables/useTheme";
+import { clamp } from "@/utils/number";
 import { createLiquidGlassPlainWallpaper } from "@/utils/liquidGlassWallpaper";
 import {
   applyLiquidGlassMaxQuality,
@@ -66,7 +67,7 @@ function clampValue(value) {
   const maximum = Math.max(props.min, props.max);
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return minimum;
-  return Math.min(maximum, Math.max(minimum, Math.round(parsed)));
+  return clamp(Math.round(parsed), minimum, maximum);
 }
 
 function toSliderValue(value) {
@@ -76,7 +77,7 @@ function toSliderValue(value) {
 }
 
 function fromSliderValue(value) {
-  const percentage = Math.min(100, Math.max(0, Number(value) || 0));
+  const percentage = clamp(Number(value) || 0, 0, 100);
   return clampValue(props.min + (percentage / 100) * (props.max - props.min));
 }
 

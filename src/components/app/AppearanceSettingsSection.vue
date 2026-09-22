@@ -1,6 +1,5 @@
 <template>
-  <section class="rounded-2xl border border-zinc-200 bg-white/82 p-4 shadow-sm dark:border-white/10 dark:bg-zinc-900/58" :aria-labelledby="titleId">
-    <h3 :id="titleId" class="text-sm font-semibold">外观</h3>
+  <SettingsSection title="外观">
     <p class="mt-3 mb-2 text-xs text-zinc-500 dark:text-zinc-400">显示主题</p>
     <ThemeSelector />
     <p class="mt-5 mb-2 text-xs text-zinc-500 dark:text-zinc-400">主题强调色</p>
@@ -23,15 +22,14 @@
     <p class="mt-2 text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">
       页面强调色即时生效；Liquid Glass 控件保留组件原生配色。
     </p>
-  </section>
+  </SettingsSection>
 </template>
 
 <script setup>
-import { useId } from "vue";
 import { Check } from "@lucide/vue";
+import SettingsSection from "@/components/app/SettingsSection.vue";
 import ThemeSelector from "@/components/app/ThemeSelector.vue";
 import { useAccentTheme } from "@/composables/useAccentTheme";
 
-const titleId = useId();
 const { accentId, accentThemes, setAccentTheme } = useAccentTheme();
 </script>

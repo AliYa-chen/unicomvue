@@ -1,5 +1,4 @@
 import {
-  computed,
   getCurrentScope,
   onScopeDispose,
   readonly,
@@ -8,12 +7,10 @@ import {
 } from "vue";
 import {
   SPEED_TEST_DEFAULT_THREADS,
-  SPEED_TEST_DEFAULT_URL,
   SPEED_TEST_LIVE_INTERVAL_MS,
   SPEED_TEST_MAX_SAMPLES,
   SPEED_TEST_MAX_THREADS,
   SPEED_TEST_MIN_THREADS,
-  SPEED_TEST_NODE_GROUPS,
   SPEED_TEST_RETRY_DELAY_MS,
   SPEED_TEST_SAMPLE_INTERVAL_MS,
   SPEED_TEST_SPEED_WINDOW_MS,
@@ -21,14 +18,14 @@ import {
 } from "@/config/speedTest";
 import {
   getStorageItem,
-  getStorageJson,
   setStorageItem,
-  setStorageJson,
 } from "@/services/storage";
-import { fetchSpeedTestNodes } from "@/services/speedTestNodes";
+import { normalizeCustomNodeUrl } from "@/domain/speedTestNodes";
+import { useSpeedTestNodes } from "@/composables/useSpeedTestNodes";
+import { getErrorMessage } from "@/utils/errors";
+import { clamp } from "@/utils/number";
 
 const REQUEST_STALL_TIMEOUT_MS = 15_000;
-const MAX_CUSTOM_NODES = 20;
 const REQUEST_OPTIONS = Object.freeze({
   cache: "no-store",
   credentials: "omit",
@@ -40,45 +37,7 @@ const REQUEST_OPTIONS = Object.freeze({
 function clampThreadCount(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return SPEED_TEST_DEFAULT_THREADS;
-  return Math.min(SPEED_TEST_MAX_THREADS, Math.max(SPEED_TEST_MIN_THREADS, parsed));
-}
-
-function normalizeUrl(value) {
-  const source = String(value || "").trim();
-  if (!source || source.length > 2048) return null;
-
-  try {
-    const url = new URL(source);
-    if (!["http:", "https:"].includes(url.protocol)) return null;
-    if (url.username || url.password) return null;
-    url.hash = "";
-    return url.href;
-  } catch {
-    return null;
-  }
-}
-
-function createNodeId() {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function sanitizeCustomNodes(value) {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set();
-  const nodes = [];
-
-  for (const item of value) {
-    if (nodes.length >= MAX_CUSTOM_NODES) break;
-    const url = normalizeUrl(item?.value);
-    const label = String(item?.label || "").trim().slice(0, 40);
-    if (!url || !label || seen.has(url)) continue;
-    seen.add(url);
-    nodes.push({ id: String(item?.id || createNodeId()), label, value: url });
-  }
-  return nodes;
+  return clamp(parsed, SPEED_TEST_MIN_THREADS, SPEED_TEST_MAX_THREADS);
 }
 
 function waitForRetry(signal) {
@@ -168,26 +127,21 @@ async function downloadOnce(url, workerSignal, { onConnected, onChunk }) {
 }
 
 export function useSpeedTest() {
-  const customNodes = ref(sanitizeCustomNodes(
-    getStorageJson(SPEED_TEST_STORAGE_KEYS.customNodes, []),
-  ));
-  const builtInNodeGroups = ref(SPEED_TEST_NODE_GROUPS);
-  const nodeListLoading = ref(false);
-  const nodeListError = ref("");
-  const builtInUrls = new Set(SPEED_TEST_NODE_GROUPS.flatMap(
-    (group) => group.options.map((option) => option.value),
-  ));
-  const savedUrl = normalizeUrl(getStorageItem(SPEED_TEST_STORAGE_KEYS.selectedUrl, ""));
-  const savedUrlExists = savedUrl && (
-    builtInUrls.has(savedUrl)
-    || customNodes.value.some((node) => node.value === savedUrl)
-  );
-
-  const selectedUrl = ref(savedUrlExists ? savedUrl : SPEED_TEST_DEFAULT_URL);
-  let selectedByUser = false;
-  let applyingNodeList = false;
-  let nodeListController = null;
-  let disposed = false;
+  const {
+    nodeGroups,
+    nodeListLoading,
+    nodeListError,
+    refreshNodeGroups,
+    customNodes,
+    selectedUrl,
+    selectedNodeLabel,
+    addCustomNode,
+    removeCustomNode,
+  } = useSpeedTestNodes({
+    onSelectionChange(url, previousUrl) {
+      if (url !== previousUrl) restartForSelectedUrl();
+    },
+  });
   const threadCount = ref(clampThreadCount(
     getStorageItem(SPEED_TEST_STORAGE_KEYS.threadCount, SPEED_TEST_DEFAULT_THREADS),
   ));
@@ -213,61 +167,6 @@ export function useSpeedTest() {
   let speedCheckpoints = [];
   let startedAt = 0;
 
-  const nodeGroups = computed(() => {
-    if (!customNodes.value.length) return builtInNodeGroups.value;
-    return [{ label: "自定义", options: customNodes.value }, ...builtInNodeGroups.value];
-  });
-
-  const defaultNodeUrl = computed(() => (
-    builtInNodeGroups.value[0]?.options[0]?.value
-    || customNodes.value[0]?.value
-    || ""
-  ));
-
-  const selectedNodeLabel = computed(() => {
-    for (const group of nodeGroups.value) {
-      const node = group.options.find((option) => option.value === selectedUrl.value);
-      if (node) return node.label;
-    }
-    return selectedUrl.value ? "自定义测速地址" : "请选择测速节点";
-  });
-
-  async function refreshNodeGroups() {
-    nodeListController?.abort();
-    const controller = new AbortController();
-    nodeListController = controller;
-    nodeListLoading.value = true;
-    nodeListError.value = "";
-
-    try {
-      const groups = await fetchSpeedTestNodes({ signal: controller.signal });
-      if (disposed || nodeListController !== controller || controller.signal.aborted) return;
-      builtInNodeGroups.value = groups;
-
-      const availableUrls = new Set(groups.flatMap(
-        (group) => group.options.map((node) => node.value),
-      ));
-      const hasUrl = (url) => availableUrls.has(url)
-        || customNodes.value.some((node) => node.value === url);
-      const nextUrl = selectedByUser
-        ? (hasUrl(selectedUrl.value) ? selectedUrl.value : defaultNodeUrl.value)
-        : (savedUrl && hasUrl(savedUrl) ? savedUrl : defaultNodeUrl.value);
-      if (nextUrl !== selectedUrl.value) {
-        applyingNodeList = true;
-        selectedUrl.value = nextUrl;
-        applyingNodeList = false;
-      }
-    } catch {
-      if (disposed || nodeListController !== controller || controller.signal.aborted) return;
-      nodeListError.value = "节点列表暂不可用，继续使用当前列表";
-    } finally {
-      if (nodeListController === controller) {
-        nodeListController = null;
-        if (!disposed) nodeListLoading.value = false;
-      }
-    }
-  }
-
   function syncWorkerCounts() {
     startedThreads.value = workerEntries.size;
     connectedThreads.value = streamingWorkers.size;
@@ -279,7 +178,7 @@ export function useSpeedTest() {
 
   function describeWorkerError(error) {
     if (error instanceof TypeError) return "测速资源连接失败，请确认节点支持跨域访问";
-    return error?.message || "测速资源连接失败，正在重试";
+    return getErrorMessage(error, "测速资源连接失败，正在重试");
   }
 
   async function runWorker(index, runId, epoch, url, entry) {
@@ -395,7 +294,7 @@ export function useSpeedTest() {
     let baselineTime = first?.time ?? now;
     let baselineBytes = first?.bytes ?? rawTotalBytes;
     if (first && second && first.time < cutoff && second.time > first.time) {
-      const ratio = Math.min(1, Math.max(0, (cutoff - first.time) / (second.time - first.time)));
+      const ratio = clamp((cutoff - first.time) / (second.time - first.time), 0, 1);
       baselineTime = cutoff;
       baselineBytes = first.bytes + (second.bytes - first.bytes) * ratio;
     }
@@ -438,7 +337,7 @@ export function useSpeedTest() {
 
   function start() {
     if (isRunning.value) return false;
-    if (!normalizeUrl(selectedUrl.value)) {
+    if (!normalizeCustomNodeUrl(selectedUrl.value)) {
       connectionError.value = "请选择有效的 HTTP 或 HTTPS 测速地址";
       phase.value = "error";
       return false;
@@ -493,44 +392,6 @@ export function useSpeedTest() {
     threadCount.value = clampThreadCount(value);
   }
 
-  function addCustomNode(labelValue, urlValue) {
-    const label = String(labelValue || "").trim().slice(0, 40);
-    const url = normalizeUrl(urlValue);
-    if (!label) return { ok: false, error: "请输入地址名称" };
-    if (!url) return { ok: false, error: "请输入有效的 HTTP 或 HTTPS 文件地址" };
-    if (globalThis.location?.protocol === "https:" && new URL(url).protocol !== "https:") {
-      return { ok: false, error: "HTTPS 页面不能请求 HTTP 测速地址" };
-    }
-    const alreadyExists = nodeGroups.value.some(
-      (group) => group.options.some((node) => node.value === url),
-    );
-    if (alreadyExists) return { ok: false, error: "该测速地址已存在" };
-    if (customNodes.value.length >= MAX_CUSTOM_NODES) {
-      return { ok: false, error: `最多保存 ${MAX_CUSTOM_NODES} 个自定义地址` };
-    }
-
-    const node = { id: createNodeId(), label, value: url };
-    customNodes.value = [...customNodes.value, node];
-    setStorageJson(SPEED_TEST_STORAGE_KEYS.customNodes, customNodes.value);
-    selectedUrl.value = url;
-    return { ok: true, node };
-  }
-
-  function removeCustomNode(nodeId) {
-    const node = customNodes.value.find((item) => item.id === nodeId);
-    if (!node) return false;
-    customNodes.value = customNodes.value.filter((item) => item.id !== nodeId);
-    setStorageJson(SPEED_TEST_STORAGE_KEYS.customNodes, customNodes.value);
-    if (selectedUrl.value === node.value) selectedUrl.value = defaultNodeUrl.value;
-    return true;
-  }
-
-  watch(selectedUrl, (url, previousUrl) => {
-    if (!applyingNodeList) selectedByUser = true;
-    setStorageItem(SPEED_TEST_STORAGE_KEYS.selectedUrl, url);
-    if (url !== previousUrl) restartForSelectedUrl();
-  }, { flush: "sync" });
-
   watch(threadCount, (value, previousValue) => {
     const normalized = clampThreadCount(value);
     if (normalized !== value) {
@@ -541,11 +402,7 @@ export function useSpeedTest() {
     if (normalized !== previousValue) reconcileThreadCount();
   });
 
-  void refreshNodeGroups();
-
   if (getCurrentScope()) onScopeDispose(() => {
-    disposed = true;
-    nodeListController?.abort();
     stop();
   });
 

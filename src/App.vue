@@ -6,6 +6,7 @@ import PrivacyModal from "@/components/privacy/PrivacyModal.vue";
 import { providePrivacy } from "@/composables/usePrivacy";
 import { provideTheme } from "@/composables/useTheme";
 import { provideUsagePreferences } from "@/composables/useUsagePreferences";
+import { DEFAULT_APP_TAB, isAppTab } from "@/config/appNavigation";
 import { provideAccountStore } from "@/stores/accountStore";
 import DashboardView from "@/views/DashboardView.vue";
 import SettingsView from "@/views/SettingsView.vue";
@@ -14,7 +15,7 @@ import SpeedTestView from "@/views/SpeedTestView.vue";
 const privacyOpen = ref(false);
 const loginOpen = ref(false);
 const speedSettingsOpen = ref(false);
-const activeTab = ref("usage");
+const activeTab = ref(DEFAULT_APP_TAB);
 const theme = provideTheme();
 provideAccountStore();
 provideUsagePreferences();
@@ -30,7 +31,7 @@ function openPrivacy() {
 }
 
 async function changeTab(tab) {
-  if (!["usage", "speed", "settings"].includes(tab)) return;
+  if (!isAppTab(tab)) return;
   if (tab !== "usage") loginOpen.value = false;
   if (tab === activeTab.value) return;
   activeTab.value = tab;

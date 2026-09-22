@@ -10,43 +10,37 @@
 
       <nav class="flex min-w-0 shrink-0 items-center justify-end gap-2" aria-label="余量页面操作">
         <div class="hidden sm:block"><ThemeSelector compact /></div>
-        <button
+        <HeaderIconButton
           v-if="hasAccounts"
-          type="button"
-          class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white/80 text-zinc-600 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 sm:hidden dark:border-white/10 dark:bg-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          class="sm:hidden"
           :disabled="isLoading"
-          title="刷新套餐余量"
-          aria-label="刷新套餐余量"
+          label="刷新套餐余量"
           @click="refreshUsage"
         >
           <RefreshCw :size="17" :class="{ 'animate-spin': isLoading }" aria-hidden="true" />
-        </button>
-        <button
+        </HeaderIconButton>
+        <HeaderIconButton
           v-if="hasAccounts"
-          type="button"
-          class="app-accent-solid inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 sm:hidden"
+          class="sm:hidden"
+          variant="accent"
           :disabled="isSharing || !ecsToken"
-          title="截图分享"
-          aria-label="截图分享"
+          label="截图分享"
           @click="shareDashboard"
         >
           <LoaderCircle v-if="isSharing" :size="17" class="animate-spin" aria-hidden="true" />
           <Camera v-else :size="17" aria-hidden="true" />
-        </button>
+        </HeaderIconButton>
         <div class="relative shrink-0">
-          <button
+          <HeaderIconButton
             ref="accountMenuButtonRef"
-            type="button"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white/80 text-zinc-600 shadow-sm transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:border-white/10 dark:bg-zinc-800/80 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            aria-label="账号管理"
-            title="账号管理"
+            label="账号管理"
             aria-haspopup="dialog"
             :aria-expanded="accountMenuOpen"
             :aria-controls="accountMenuOpen ? accountMenuId : undefined"
             @click="accountMenuOpen = !accountMenuOpen"
           >
             <Settings2 :size="18" aria-hidden="true" />
-          </button>
+          </HeaderIconButton>
 
           <button
             v-if="accountMenuOpen"
@@ -84,69 +78,24 @@
           aria-hidden="true"
         ></div>
 
-        <section
+        <PackageSummaryCard
           v-if="hasAccounts"
-          class="w-full min-w-0 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm min-[360px]:p-4 sm:p-6 dark:border-[#8e96aa40] dark:bg-[#1b1b1f95]"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0 flex-1">
-              <h1 class="min-w-0 text-[clamp(0.75rem,4.2vw,1.125rem)] leading-tight font-semibold tracking-tight min-[400px]:text-xl sm:text-2xl">
-                <button
-                  type="button"
-                  class="block max-w-full cursor-pointer touch-manipulation select-none whitespace-nowrap text-left text-zinc-900 transition-opacity active:opacity-60 dark:text-zinc-100"
-                  :title="tokenButtonTitle"
-                  aria-label="单击复制 onlin_token，双击复制 ecs_token"
-                  @click="copyClickToken"
-                  @contextmenu.prevent
-                  @dragstart.prevent
-                >
-                  {{ packageName || "余量 / 用量展示" }}
-                </button>
-              </h1>
-
-              <div class="mt-1 hidden text-xs text-zinc-500 min-[400px]:block dark:text-zinc-400">
-                <span class="font-medium text-zinc-700 dark:text-zinc-300">余量 / 用量</span>
-                <span class="mx-2 text-zinc-300 dark:text-zinc-700">·</span>
-                <span>单击复制 onlin_token · 双击复制 ecs_token</span>
-              </div>
-            </div>
-
-            <div class="hidden shrink-0 flex-wrap items-center justify-end gap-2 sm:flex">
-              <button
-                type="button"
-                class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium whitespace-nowrap text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                :disabled="isLoading"
-                aria-label="刷新套餐余量"
-                @click="refreshUsage"
-              >
-                <RefreshCw :size="17" class="shrink-0" :class="{ 'animate-spin': isLoading }" aria-hidden="true" />
-                <span class="hidden whitespace-nowrap sm:inline">刷新</span>
-              </button>
-              <button
-                type="button"
-                class="app-accent-solid inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium whitespace-nowrap transition disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
-                :disabled="isSharing || !ecsToken"
-                title="截图分享"
-                aria-label="截图分享"
-                @click="shareDashboard"
-              >
-                <LoaderCircle v-if="isSharing" :size="17" class="shrink-0 animate-spin" aria-hidden="true" />
-                <Camera v-else :size="17" class="shrink-0" aria-hidden="true" />
-                <span class="hidden whitespace-nowrap sm:inline">截图分享</span>
-              </button>
-            </div>
-          </div>
-
-          <DashboardSummary
-            :current-account-label="currentAccountLabel"
-            :status-text="statusText"
-            :dot-kind="statusKind"
-            :last-at="lastUpdatedAt"
-            :signed-rate="signedRate"
-            :qci-level="qciLevel"
-            :has-limit-service="hasLimitService"
-          />
-        </section>
+          :package-name="packageName"
+          :token-button-title="tokenButtonTitle"
+          :current-account-label="currentAccountLabel"
+          :status-text="statusText"
+          :dot-kind="statusKind"
+          :last-at="lastUpdatedAt"
+          :signed-rate="signedRate"
+          :qci-level="qciLevel"
+          :has-limit-service="hasLimitService"
+          :is-loading="isLoading"
+          :is-sharing="isSharing"
+          :can-share="!!ecsToken"
+          @copy-token="copyClickToken"
+          @refresh="refreshUsage"
+          @share="shareDashboard"
+        />
 
         <UsageGrid v-if="hasAccounts" :cards="usageCards" :loaded="hasLoaded" />
 
@@ -225,11 +174,12 @@ import {
   UserRound,
 } from "@lucide/vue";
 import AppToast from "@/components/app/AppToast.vue";
+import HeaderIconButton from "@/components/app/HeaderIconButton.vue";
 import PageHeading from "@/components/app/PageHeading.vue";
 import ThemeSelector from "@/components/app/ThemeSelector.vue";
 import LoginDialog from "@/components/auth/LoginDialog.vue";
 import AccountMenu from "@/components/dashboard/AccountMenu.vue";
-import DashboardSummary from "@/components/dashboard/DashboardSummary.vue";
+import PackageSummaryCard from "@/components/dashboard/PackageSummaryCard.vue";
 import UsageGrid from "@/components/dashboard/UsageGrid.vue";
 import { usePrivacy } from "@/composables/usePrivacy";
 import { useScreenshotShare } from "@/composables/useScreenshotShare";
