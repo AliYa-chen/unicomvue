@@ -11,14 +11,11 @@
       <path
         class="speed-gauge__track"
         :d="GAUGE_ARC_PATH"
-        pathLength="100"
       />
       <path
+        v-if="gaugeProgressPath"
         class="speed-gauge__progress"
-        :class="{ 'has-progress': gaugeProgress > 0 }"
-        :d="GAUGE_ARC_PATH"
-        pathLength="100"
-        :style="{ strokeDasharray: `${gaugeProgress} 100` }"
+        :d="gaugeProgressPath"
       />
       <g v-for="tick in GAUGE_SCALE_TICKS" :key="tick.value">
         <line
@@ -78,12 +75,7 @@ const GAUGE_CENTER = 100;
 const GAUGE_RADIUS = 91;
 const GAUGE_START_ANGLE = 135;
 const GAUGE_SWEEP_ANGLE = 270;
-const gaugeArcStart = polarPoint(GAUGE_RADIUS, GAUGE_START_ANGLE);
-const gaugeArcEnd = polarPoint(GAUGE_RADIUS, GAUGE_START_ANGLE + GAUGE_SWEEP_ANGLE);
-const GAUGE_ARC_PATH = [
-  `M ${gaugeArcStart.x} ${gaugeArcStart.y}`,
-  `A ${GAUGE_RADIUS} ${GAUGE_RADIUS} 0 1 1 ${gaugeArcEnd.x} ${gaugeArcEnd.y}`,
-].join(" ");
+const GAUGE_ARC_PATH = createArcPath(GAUGE_SWEEP_ANGLE);
 const GAUGE_SCALE_TICKS = Object.freeze(SPEED_GAUGE_SCALE.map((item, index) => {
   const ratio = index / (SPEED_GAUGE_SCALE.length - 1);
   const angle = GAUGE_START_ANGLE + ratio * GAUGE_SWEEP_ANGLE;
@@ -99,6 +91,11 @@ const GAUGE_SCALE_TICKS = Object.freeze(SPEED_GAUGE_SCALE.map((item, index) => {
 const speedValueRef = useTemplateRef("speedValueRef");
 const formattedSpeed = computed(() => formatSpeed(props.speedMbps));
 const gaugeProgress = computed(() => mapSpeedToGaugeProgress(props.speedMbps));
+const gaugeProgressPath = computed(() => (
+  gaugeProgress.value > 0
+    ? createArcPath(GAUGE_SWEEP_ANGLE * (gaugeProgress.value / 100))
+    : ""
+));
 let speedValueResizeObserver = null;
 let speedValueFitFrame = 0;
 
@@ -108,6 +105,16 @@ function polarPoint(radius, angle) {
     x: Number((GAUGE_CENTER + radius * Math.cos(radians)).toFixed(3)),
     y: Number((GAUGE_CENTER + radius * Math.sin(radians)).toFixed(3)),
   };
+}
+
+function createArcPath(sweepAngle) {
+  const start = polarPoint(GAUGE_RADIUS, GAUGE_START_ANGLE);
+  const end = polarPoint(GAUGE_RADIUS, GAUGE_START_ANGLE + sweepAngle);
+  const largeArcFlag = sweepAngle > 180 ? 1 : 0;
+  return [
+    `M ${start.x} ${start.y}`,
+    `A ${GAUGE_RADIUS} ${GAUGE_RADIUS} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`,
+  ].join(" ");
 }
 
 function uprightTangentRotation(angle) {
@@ -213,13 +220,9 @@ onBeforeUnmount(() => {
 }
 
 .speed-gauge__progress {
-  opacity: 0;
   stroke: var(--app-accent-500);
-  transition: stroke-dasharray 220ms ease, opacity 160ms ease;
   filter: drop-shadow(0 3px 7px color-mix(in srgb, var(--app-accent-500) 28%, transparent));
 }
-
-.speed-gauge__progress.has-progress { opacity: 1; }
 
 .speed-gauge__marker {
   stroke: color-mix(in srgb, var(--color-zinc-500) 36%, transparent);
@@ -292,6 +295,6 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .speed-gauge::before, .speed-gauge__progress { transition: none; }
+  .speed-gauge::before { transition: none; }
 }
 </style>
